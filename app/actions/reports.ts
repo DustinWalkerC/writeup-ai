@@ -4,6 +4,21 @@ import { auth } from '@clerk/nextjs/server'
 import { supabase, Report, ReportFile, QuestionnaireData } from '@/lib/supabase'
 import { revalidatePath } from 'next/cache'
 
+function isUuid(value: unknown): value is string {
+  if (typeof value !== 'string') return false
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    value.trim()
+  )
+}
+
+function stringifyError(err: unknown) {
+  try {
+    return JSON.stringify(err, null, 2)
+  } catch {
+    return String(err)
+  }
+}
+
 // ===================
 // Report CRUD
 // ===================
@@ -14,14 +29,20 @@ export async function getReports() {
 
   const { data, error } = await supabase
     .from('reports')
-    .select(`
+    .select(
+      `
       *,
       property:properties(*)
-    `)
+    `
+    )
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
 
-  if (error) throw error
+  if (error) {
+    console.error('getReports error:', error)
+    throw new Error(`getReports failed: ${stringifyError(error)}`)
+  }
+
   return data as (Report & { property: Report['property'] })[]
 }
 
@@ -29,17 +50,28 @@ export async function getReport(id: string) {
   const { userId } = await auth()
   if (!userId) throw new Error('Unauthorized')
 
+  if (!isUuid(id)) {
+    console.error('getReport called with non-UUID id:', id)
+    throw new Error(`getReport invalid id (expected UUID): ${id}`)
+  }
+
   const { data, error } = await supabase
     .from('reports')
-    .select(`
+    .select(
+      `
       *,
       property:properties(*)
-    `)
+    `
+    )
     .eq('id', id)
     .eq('user_id', userId)
     .single()
 
-  if (error) throw error
+  if (error) {
+    console.error('getReport error:', { id, userId, error })
+    throw new Error(`getReport failed: ${stringifyError(error)}`)
+  }
+
   return data as Report & { property: Report['property'] }
 }
 
@@ -47,31 +79,60 @@ export async function createReport(propertyId: string, month: string, year: numb
   const { userId } = await auth()
   if (!userId) throw new Error('Unauthorized')
 
+  console.log('createReport inputs:', { propertyId, month, year, userId })
+
+  if (!isUuid(propertyId)) {
+    throw new Error(`createReport invalid propertyId (expected UUID): ${propertyId}`)
+  }
+
+  if (typeof month !== 'string' || !month.trim()) {
+    throw new Error(`createReport invalid month: ${String(month)}`)
+  }
+
+  if (typeof year !== 'number' || Number.isNaN(year)) {
+    throw new Error(`createReport invalid year: ${String(year)}`)
+  }
+
+  const insertPayload = {
+    property_id: propertyId,
+    user_id: userId,
+    month,
+    year,
+    status: 'draft',
+    template_version: 'v1',
+    input_mode: 'guided',
+  }
+
   const { data, error } = await supabase
     .from('reports')
-    .insert({
-      property_id: propertyId,
-      user_id: userId,
-      month,
-      year,
-      status: 'draft',
-      template_version: 'v1',
-      input_mode: 'guided',
-    })
+    .insert(insertPayload)
     .select()
     .single()
 
-  if (error) throw error
+  if (error) {
+    console.error('createReport error:', { insertPayload, error })
+    throw new Error(`createReport failed: ${stringifyError(error)}`)
+  }
+
+  if (!data?.id) {
+    console.error('createReport returned no data:', { insertPayload, data })
+    throw new Error(`createReport failed: no row returned from Supabase`)
+  }
+
   revalidatePath('/dashboard/reports')
   return data as Report
 }
 
 export async function updateReport(
-  id: string, 
+  id: string,
   updates: Partial<Report>
 ): Promise<Report> {
   const { userId } = await auth()
   if (!userId) throw new Error('Unauthorized')
+
+  if (!isUuid(id)) {
+    throw new Error(`updateReport invalid id (expected UUID): ${id}`)
+  }
 
   const { data, error } = await supabase
     .from('reports')
@@ -84,7 +145,11 @@ export async function updateReport(
     .select()
     .single()
 
-  if (error) throw error
+  if (error) {
+    console.error('updateReport error:', { id, userId, updates, error })
+    throw new Error(`updateReport failed: ${stringifyError(error)}`)
+  }
+
   revalidatePath(`/dashboard/reports/${id}`)
   return data as Report
 }
@@ -93,25 +158,40 @@ export async function deleteReport(id: string) {
   const { userId } = await auth()
   if (!userId) throw new Error('Unauthorized')
 
-  // First delete associated files from storage
-  const { data: files } = await supabase
+  if (!isUuid(id)) {
+    throw new Error(`deleteReport invalid id (expected UUID): ${id}`)
+  }
+
+  const { data: files, error: filesErr } = await supabase
     .from('report_files')
     .select('storage_path')
     .eq('report_id', id)
 
-  if (files && files.length > 0) {
-    const paths = files.map(f => f.storage_path)
-    await supabase.storage.from('report-files').remove(paths)
+  if (filesErr) {
+    console.error('deleteReport fetch files error:', { id, filesErr })
+    throw new Error(`deleteReport failed fetching files: ${stringifyError(filesErr)}`)
   }
 
-  // Then delete the report (cascade will delete report_files records)
+  if (files && files.length > 0) {
+    const paths = files.map((f) => f.storage_path)
+    const { error: removeErr } = await supabase.storage.from('report-files').remove(paths)
+    if (removeErr) {
+      console.error('deleteReport storage remove error:', { id, removeErr })
+      throw new Error(`deleteReport failed removing files: ${stringifyError(removeErr)}`)
+    }
+  }
+
   const { error } = await supabase
     .from('reports')
     .delete()
     .eq('id', id)
     .eq('user_id', userId)
 
-  if (error) throw error
+  if (error) {
+    console.error('deleteReport error:', { id, userId, error })
+    throw new Error(`deleteReport failed: ${stringifyError(error)}`)
+  }
+
   revalidatePath('/dashboard/reports')
 }
 
@@ -123,6 +203,10 @@ export async function getReportFiles(reportId: string) {
   const { userId } = await auth()
   if (!userId) throw new Error('Unauthorized')
 
+  if (!isUuid(reportId)) {
+    throw new Error(`getReportFiles invalid reportId (expected UUID): ${reportId}`)
+  }
+
   const { data, error } = await supabase
     .from('report_files')
     .select('*')
@@ -130,7 +214,11 @@ export async function getReportFiles(reportId: string) {
     .eq('user_id', userId)
     .order('created_at', { ascending: true })
 
-  if (error) throw error
+  if (error) {
+    console.error('getReportFiles error:', { reportId, userId, error })
+    throw new Error(`getReportFiles failed: ${stringifyError(error)}`)
+  }
+
   return data as ReportFile[]
 }
 
@@ -143,6 +231,10 @@ export async function addReportFile(
 ) {
   const { userId } = await auth()
   if (!userId) throw new Error('Unauthorized')
+
+  if (!isUuid(reportId)) {
+    throw new Error(`addReportFile invalid reportId (expected UUID): ${reportId}`)
+  }
 
   const { data, error } = await supabase
     .from('report_files')
@@ -158,7 +250,11 @@ export async function addReportFile(
     .select()
     .single()
 
-  if (error) throw error
+  if (error) {
+    console.error('addReportFile error:', { reportId, userId, error })
+    throw new Error(`addReportFile failed: ${stringifyError(error)}`)
+  }
+
   revalidatePath(`/dashboard/reports/${reportId}`)
   return data as ReportFile
 }
@@ -167,17 +263,29 @@ export async function deleteReportFile(fileId: string, storagePath: string) {
   const { userId } = await auth()
   if (!userId) throw new Error('Unauthorized')
 
-  // Delete from storage
-  await supabase.storage.from('report-files').remove([storagePath])
+  if (!isUuid(fileId)) {
+    throw new Error(`deleteReportFile invalid fileId (expected UUID): ${fileId}`)
+  }
 
-  // Delete from database
+  const { error: removeErr } = await supabase.storage
+    .from('report-files')
+    .remove([storagePath])
+
+  if (removeErr) {
+    console.error('deleteReportFile storage remove error:', { fileId, removeErr })
+    throw new Error(`deleteReportFile storage remove failed: ${stringifyError(removeErr)}`)
+  }
+
   const { error } = await supabase
     .from('report_files')
     .delete()
     .eq('id', fileId)
     .eq('user_id', userId)
 
-  if (error) throw error
+  if (error) {
+    console.error('deleteReportFile db delete error:', { fileId, userId, error })
+    throw new Error(`deleteReportFile failed: ${stringifyError(error)}`)
+  }
 }
 
 // ===================
@@ -189,8 +297,9 @@ export async function saveQuestionnaire(reportId: string, questionnaire: Questio
 }
 
 export async function saveFreeformNarrative(reportId: string, narrative: string) {
-  return updateReport(reportId, { 
+  return updateReport(reportId, {
     input_mode: 'freeform',
-    freeform_narrative: narrative 
+    freeform_narrative: narrative,
   })
 }
+
