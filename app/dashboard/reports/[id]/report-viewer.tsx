@@ -1,13 +1,21 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { SectionEditor } from './section-editor'
 import { saveSection, regenerateSection } from '@/app/actions/ai'
 import { REPORT_SECTIONS } from '@/lib/report-sections'
 import { StructuredContent, Property, UserSettings } from '@/lib/supabase'
 import { ReportTemplate } from '@/components/report-template'
+import { ExportDropdown } from '@/components/export-dropdown'
 import { extractReportTemplateData } from '@/lib/report-data-extractor'
+import {
+  generatePDF,
+  generateStandaloneHTML,
+  downloadHTML,
+  copyRichHTMLToClipboard,
+  generateFilename,
+} from '@/lib/export-utils'
 
 type Props = {
   reportId: string
@@ -25,15 +33,18 @@ type Props = {
   userSettings?: UserSettings | null
 }
 
-type ViewMode = 'sections' | 'preview' | 'formatted'
+type ViewMode = 'formatted' | 'sections' | 'preview'
 
 export function ReportViewer({ reportId, report, userSettings }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('formatted')
   const [regeneratingSection, setRegeneratingSection] = useState<string | null>(null)
-
   const [sections, setSections] = useState(() =>
     parseStructuredContent(report.content as StructuredContent, report.narrative)
   )
+  const [isExporting, setIsExporting] = useState(false)
+  const [exportStatus, setExportStatus] = useState<string | null>(null)
+
+  const exportRef = useRef<HTMLDivElement>(null)
 
   function parseStructuredContent(
     content: StructuredContent | null,
@@ -51,7 +62,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
   function parseNarrativeIntoSections(
     narrative: string
   ): Record<string, { title: string; content: string; order: number }> {
-    const sections: Record<string, { title: string; content: string; order: number }> = {}
+    const result: Record<string, { title: string; content: string; order: number }> = {}
     const sectionRegex = /## ([^\n]+)\n([\s\S]*?)(?=## |$)/g
     let match
 
@@ -61,21 +72,22 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       const sectionId = mapTitleToSectionId(title)
       const def = REPORT_SECTIONS.find((s) => s.id === sectionId)
 
-      sections[sectionId] = {
+      result[sectionId] = {
         title,
         content,
         order: def?.order || 99,
       }
     }
 
-    return sections
+    return result
   }
 
   function mapTitleToSectionId(title: string): string {
     const lowerTitle = title.toLowerCase()
     if (lowerTitle.includes('executive') || lowerTitle.includes('summary')) return 'executive_summary'
     if (lowerTitle.includes('occupancy') || lowerTitle.includes('leasing')) return 'occupancy_leasing'
-    if (lowerTitle.includes('financial') || lowerTitle.includes('performance')) return 'financial_performance'
+    if (lowerTitle.includes('financial') || lowerTitle.includes('performance'))
+      return 'financial_performance'
     if (lowerTitle.includes('capital') || lowerTitle.includes('project')) return 'capital_projects'
     if (lowerTitle.includes('operation')) return 'operations'
     if (lowerTitle.includes('market') || lowerTitle.includes('outlook')) return 'market_outlook'
@@ -138,64 +150,143 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     )
   }, [report, sections, previewNarrative, userSettings])
 
+  // Export handlers
+  const showStatus = (message: string) => {
+    setExportStatus(message)
+    setTimeout(() => setExportStatus(null), 3000)
+  }
+
+  const handleExportPDF = async () => {
+    if (!exportRef.current) return
+    setIsExporting(true)
+    showStatus('Generating PDF...')
+
+    try {
+      const filename = generateFilename(
+        report.property?.name || 'property',
+        report.month,
+        report.year,
+        'pdf'
+      )
+      await generatePDF(exportRef.current, filename)
+      showStatus('PDF downloaded')
+    } catch (error) {
+      console.error('PDF export error:', error)
+      showStatus('Export failed')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleExportHTML = () => {
+    if (!exportRef.current) return
+    setIsExporting(true)
+
+    try {
+      const html = generateStandaloneHTML(
+        exportRef.current.innerHTML,
+        `${report.property?.name || 'Property'} - ${report.month} ${report.year} Report`
+      )
+      const filename = generateFilename(
+        report.property?.name || 'property',
+        report.month,
+        report.year,
+        'html'
+      )
+      downloadHTML(html, filename)
+      showStatus('HTML downloaded')
+    } catch (error) {
+      console.error('HTML export error:', error)
+      showStatus('Export failed')
+    } finally {
+      setIsExporting(false)
+    }
+  }
+
+  const handleCopyForEmail = async () => {
+    if (!exportRef.current) return
+
+    const success = await copyRichHTMLToClipboard(exportRef.current)
+    showStatus(success ? 'Copied! Paste into your email' : 'Copy failed')
+  }
+
+  const exportOptions = [
+    {
+      id: 'pdf',
+      label: 'Download PDF',
+      description: 'High-quality PDF for printing or sharing',
+      icon: '📄',
+      onClick: handleExportPDF,
+    },
+    {
+      id: 'html',
+      label: 'Download HTML',
+      description: 'Standalone web page file',
+      icon: '🌐',
+      onClick: handleExportHTML,
+    },
+    {
+      id: 'email',
+      label: 'Copy for Email',
+      description: 'Paste directly into Gmail, Outlook, etc.',
+      icon: '📧',
+      onClick: handleCopyForEmail,
+    },
+  ]
+
   return (
     <div className="bg-white rounded-lg border border-slate-200">
       {/* Toolbar */}
       <div className="flex items-center justify-between p-4 border-b border-slate-200">
-        <div className="flex items-center gap-2">
-          <div className="flex bg-slate-100 rounded-lg p-1">
-            <button
-              onClick={() => setViewMode('formatted')}
-              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                viewMode === 'formatted'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Formatted
-            </button>
-            <button
-              onClick={() => setViewMode('sections')}
-              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                viewMode === 'sections'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Edit Sections
-            </button>
-            <button
-              onClick={() => setViewMode('preview')}
-              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-                viewMode === 'preview'
-                  ? 'bg-white text-slate-900 shadow-sm'
-                  : 'text-slate-600 hover:text-slate-900'
-              }`}
-            >
-              Raw Text
-            </button>
-          </div>
+        {/* View Mode Toggle */}
+        <div className="flex bg-slate-100 rounded-lg p-1">
+          <button
+            onClick={() => setViewMode('formatted')}
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              viewMode === 'formatted'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Formatted
+          </button>
+          <button
+            onClick={() => setViewMode('sections')}
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              viewMode === 'sections'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Edit Sections
+          </button>
+          <button
+            onClick={() => setViewMode('preview')}
+            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+              viewMode === 'preview'
+                ? 'bg-white text-slate-900 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Raw Text
+          </button>
         </div>
 
-        <div className="flex items-center gap-2">
-          <button
-            className="px-3 py-1.5 bg-slate-100 text-slate-400 rounded text-sm font-medium cursor-not-allowed"
-            title="Coming later"
-          >
-            Export PDF
-          </button>
-          <button
-            className="px-3 py-1.5 bg-slate-100 text-slate-400 rounded text-sm font-medium cursor-not-allowed"
-            title="Coming later"
-          >
-            Export HTML
-          </button>
-        </div>
+        {/* Export Dropdown */}
+        <ExportDropdown
+          options={exportOptions}
+          isExporting={isExporting}
+          exportStatus={exportStatus}
+        />
       </div>
 
       {/* Content Area */}
       <div className={viewMode === 'formatted' ? '' : 'p-6'}>
-        {viewMode === 'formatted' && <ReportTemplate data={templateData} />}
+        {viewMode === 'formatted' && (
+          <div ref={exportRef}>
+            <ReportTemplate data={templateData} />
+          </div>
+        )}
 
         {viewMode === 'sections' && (
           <div className="space-y-4">
@@ -223,9 +314,21 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         )}
       </div>
 
+      {/* Hidden export container for non-formatted views */}
+      {viewMode !== 'formatted' && (
+        <div className="hidden">
+          <div ref={exportRef}>
+            <ReportTemplate data={templateData} />
+          </div>
+        </div>
+      )}
+
       {/* Footer Actions */}
       <div className="flex items-center justify-between p-4 border-t border-slate-200 bg-slate-50">
-        <Link href={`/dashboard/reports/${reportId}/generate`} className="text-slate-600 hover:text-slate-900 text-sm">
+        <Link
+          href={`/dashboard/reports/${reportId}/generate`}
+          className="text-slate-600 hover:text-slate-900 text-sm"
+        >
           Regenerate Entire Report
         </Link>
         <Link

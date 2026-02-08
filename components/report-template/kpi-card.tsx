@@ -1,5 +1,4 @@
-
-import { KPIMetric, formatCurrency, formatPercent, formatChange } from '@/lib/report-template-types'
+import { KPIMetric } from '@/lib/report-template-types'
 
 type Props = {
   metric: KPIMetric
@@ -9,10 +8,16 @@ export function KPICard({ metric }: Props) {
   const formatValue = (value: string | number, format: KPIMetric['format']) => {
     if (typeof value === 'string') return value
     switch (format) {
-      case 'percent': return formatPercent(value)
-      case 'currency': return formatCurrency(value, true)
-      case 'number': return value.toLocaleString()
-      default: return String(value)
+      case 'percent':
+        return `${value.toFixed(1)}%`
+      case 'currency':
+        if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`
+        if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`
+        return `$${value.toLocaleString()}`
+      case 'number':
+        return value.toLocaleString()
+      default:
+        return String(value)
     }
   }
 
@@ -28,6 +33,7 @@ export function KPICard({ metric }: Props) {
 
   return (
     <div
+      className="kpi-card"
       style={{
         backgroundColor: colors.bg,
         border: `1px solid ${colors.border}`,
@@ -61,17 +67,25 @@ export function KPICard({ metric }: Props) {
           style={{
             fontSize: '0.8rem',
             marginTop: '8px',
-            color: metric.change.direction === 'up' ? '#059669' : 
-                   metric.change.direction === 'down' ? '#dc2626' : '#64748b',
+            color:
+              metric.change.direction === 'up'
+                ? '#059669'
+                : metric.change.direction === 'down'
+                ? '#dc2626'
+                : '#64748b',
             fontWeight: 500,
           }}
         >
-          {metric.change.direction === 'up' ? '↑' : 
-           metric.change.direction === 'down' ? '↓' : '→'}{' '}
-          {formatChange(Math.abs(metric.change.value), metric.format === 'currency' ? 'currency' : 'percent')}{' '}
-          {metric.change.comparison}
+          {metric.change.direction === 'up'
+            ? '↑'
+            : metric.change.direction === 'down'
+            ? '↓'
+            : '→'}{' '}
+          {Math.abs(metric.change.value).toFixed(1)}
+          {metric.format === 'percent' ? '%' : ''} {metric.change.comparison}
         </div>
       )}
     </div>
   )
 }
+

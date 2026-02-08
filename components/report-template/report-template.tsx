@@ -1,7 +1,6 @@
 import { ReportTemplateData } from '@/lib/report-template-types'
 import { KPICard } from './kpi-card'
 import { ProgressBar } from './progress-bar'
-import { DataTable } from './data-table'
 
 type Props = {
   data: ReportTemplateData
@@ -11,7 +10,6 @@ type Props = {
 export function ReportTemplate({ data, showDataVisualization = true }: Props) {
   const hasKPIs = data.kpis && Object.values(data.kpis).some(Boolean)
   const hasProgress = data.progress && Object.values(data.progress).some(Boolean)
-  const hasFinancials = data.financialSummary?.revenue?.length || data.financialSummary?.expenses?.length
 
   return (
     <div
@@ -143,8 +141,8 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
       <section>
         {data.sections
           .sort((a, b) => a.order - b.order)
-          .map((section, index) => (
-            <div key={section.id} style={{ marginBottom: '32px' }}>
+          .map((section) => (
+            <div key={section.id} style={{ marginBottom: '32px' }} className="section">
               <h3
                 style={{
                   fontSize: '1.1rem',
@@ -170,42 +168,13 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
           ))}
       </section>
 
-      {/* Financial Summary Table */}
-      {showDataVisualization && hasFinancials && (
-        <section
-          style={{
-            marginTop: '40px',
-            paddingTop: '24px',
-            borderTop: '1px solid #e2e8f0',
-          }}
-        >
-          <h3
-            style={{
-              fontSize: '0.8rem',
-              fontWeight: 600,
-              color: '#64748b',
-              textTransform: 'uppercase',
-              letterSpacing: '0.1em',
-              marginBottom: '20px',
-            }}
-          >
-            Financial Summary
-          </h3>
-          {data.financialSummary?.revenue && data.financialSummary.revenue.length > 0 && (
-            <DataTable title="Revenue" rows={data.financialSummary.revenue} />
-          )}
-          {data.financialSummary?.expenses && data.financialSummary.expenses.length > 0 && (
-            <DataTable title="Expenses" rows={data.financialSummary.expenses} />
-          )}
-        </section>
-      )}
-
       {/* Footer */}
-            {/* Footer - Replace the existing footer with this */}
       <footer
+        className="footer"
         style={{
           marginTop: '48px',
           paddingTop: '24px',
+          paddingBottom: '24px',
           borderTop: '2px solid #e2e8f0',
         }}
       >
@@ -226,10 +195,11 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
               lineHeight: 1.5,
             }}
           >
-            {data.disclaimer || 'Confidential – For Investor Use Only. This report contains proprietary information and is intended solely for the use of the intended recipient(s). Any distribution or reproduction without prior written consent is strictly prohibited.'}
+            {data.disclaimer ||
+              'Confidential – For Investor Use Only. This report contains proprietary information and is intended solely for the use of the intended recipient(s). Any distribution or reproduction without prior written consent is strictly prohibited.'}
           </p>
         </div>
-        
+
         {/* Company & Generation Info */}
         <div
           style={{
@@ -256,4 +226,5 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
     </div>
   )
 }
+
 

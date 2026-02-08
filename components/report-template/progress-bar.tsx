@@ -1,4 +1,4 @@
-import { ProgressMetric, formatCurrency, formatPercent } from '@/lib/report-template-types'
+import { ProgressMetric } from '@/lib/report-template-types'
 
 type Props = {
   metric: ProgressMetric
@@ -6,21 +6,27 @@ type Props = {
 
 export function ProgressBar({ metric }: Props) {
   const percentage = Math.min(100, Math.max(0, (metric.current / metric.target) * 100))
-  
+
   const statusColors = {
     'on-track': '#10b981',
     'at-risk': '#f59e0b',
-    'behind': '#ef4444',
+    behind: '#ef4444',
   }
-  
-  const status = metric.status || (percentage >= 90 ? 'on-track' : percentage >= 70 ? 'at-risk' : 'behind')
+
+  const status =
+    metric.status || (percentage >= 90 ? 'on-track' : percentage >= 70 ? 'at-risk' : 'behind')
   const fillColor = statusColors[status]
 
   const formatValue = (value: number) => {
     switch (metric.format) {
-      case 'percent': return formatPercent(value)
-      case 'currency': return formatCurrency(value, true)
-      default: return value.toLocaleString()
+      case 'percent':
+        return `${value.toFixed(1)}%`
+      case 'currency':
+        if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`
+        if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`
+        return `$${value.toLocaleString()}`
+      default:
+        return value.toLocaleString()
     }
   }
 
