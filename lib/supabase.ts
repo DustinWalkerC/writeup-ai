@@ -21,26 +21,7 @@ export type Property = {
   updated_at: string
 }
 
-export type Report = {
-  id: string
-  property_id: string
-  user_id: string
-  month: string
-  year: number
-  status: 'draft' | 'generating' | 'complete' | 'error'
-  content: Record<string, unknown>
-  financial_data: Record<string, unknown>
-  questionnaire: QuestionnaireData
-  narrative: string | null
-  images: ReportImage[]
-  template_version: string
-  input_mode: 'guided' | 'freeform'
-  freeform_narrative: string | null
-  created_at: string
-  updated_at: string
-  // Joined data
-  property?: Property
-}
+
 
 export type ReportFile = {
   id: string
@@ -159,4 +140,43 @@ export const MONTHS = [
 ] as const
 
 export type MonthName = typeof MONTHS[number]
+// Add this type for structured sections
+export type ReportSectionContent = {
+  title: string
+  content: string
+  order: number
+}
+
+export type StructuredContent = {
+  sections: {
+    [sectionId: string]: ReportSectionContent
+  }
+  generatedAt?: string
+  modelUsed?: string
+  tokensUsed?: {
+    input: number
+    output: number
+  }
+}
+
+// Update the Report type to include structured content
+export type Report = {
+  id: string
+  property_id: string
+  user_id: string
+  month: string
+  year: number
+  status: 'draft' | 'generating' | 'complete' | 'error'
+  content: StructuredContent | Record<string, unknown>  // Updated
+  financial_data: Record<string, unknown>
+  questionnaire: QuestionnaireData
+  narrative: string | null
+  images: ReportImage[]
+  template_version: string
+  input_mode: 'guided' | 'freeform'
+  freeform_narrative: string | null
+  created_at: string
+  updated_at: string
+  property?: Property
+}
 

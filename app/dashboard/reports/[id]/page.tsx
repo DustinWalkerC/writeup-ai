@@ -2,14 +2,14 @@ import { getReport } from '@/app/actions/reports'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ReportViewer } from './report-viewer'
+import { StructuredContent } from '@/lib/supabase'
 
-export default async function ReportViewPage({
-  params,
-}: {
-  params: Promise<{ id: string }>
+export default async function ReportViewPage({ 
+  params 
+}: { 
+  params: Promise<{ id: string }> 
 }) {
   const { id } = await params
-
   const report = await getReport(id)
 
   if (!report) {
@@ -28,9 +28,13 @@ export default async function ReportViewPage({
 
   return (
     <div className="max-w-4xl mx-auto">
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <Link href="/dashboard/reports" className="text-slate-500 hover:text-slate-700 text-sm">
+          <Link
+            href="/dashboard/reports"
+            className="text-slate-500 hover:text-slate-700 text-sm"
+          >
             ← Back to Reports
           </Link>
           <h1 className="text-2xl font-bold text-slate-900 mt-2">
@@ -48,9 +52,11 @@ export default async function ReportViewPage({
         </span>
       </div>
 
+      {/* Report Content */}
       <ReportViewer
         reportId={report.id}
         narrative={report.narrative}
+        structuredContent={report.content as StructuredContent}
         propertyName={report.property?.name || 'Property'}
         month={report.month}
         year={report.year}
@@ -58,6 +64,7 @@ export default async function ReportViewPage({
     </div>
   )
 }
+
 
 
 

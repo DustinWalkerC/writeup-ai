@@ -141,7 +141,7 @@ export function GenerateClient({
             <div className="inline-block mb-6">
               <div className="relative">
                 <div className="w-20 h-20 border-4 border-slate-200 rounded-full"></div>
-                <div className="absolute inset-0 w-20 h-20 border-4 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="absolute inset-0 w-20 h-20 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
               </div>
             </div>
             <h2 className="text-xl font-semibold text-slate-900 mb-2">
