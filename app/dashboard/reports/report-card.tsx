@@ -61,10 +61,10 @@ export function ReportCard({ report }: { report: Report & { property?: { name: s
       <div className="flex gap-2 pt-4 border-t border-slate-100">
 <Link
   href={
-    report.status === 'draft'
-      ? `/dashboard/reports/${report.id}/edit`
-      : `/dashboard/reports/${report.id}`
-  }
+  report.status === 'draft' 
+    ? `/dashboard/reports/${report.id}/edit`
+    : `/dashboard/reports/${report.id}`
+}
   className="flex-1 text-center px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
 >
   {report.status === 'draft' ? 'Continue' : 'View'}
@@ -81,4 +81,5 @@ export function ReportCard({ report }: { report: Report & { property?: { name: s
     </div>
   )
 }
+
 
