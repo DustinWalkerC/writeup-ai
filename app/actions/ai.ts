@@ -2,7 +2,7 @@
 
 import { auth } from '@clerk/nextjs/server'
 import { supabase } from '@/lib/supabase'
-import { generateReportNarrative, extractTextFromFile } from '@/lib/claude'
+import { generateInstitutionalReport, PropertyContext, ReportContext } from '@/lib/claude'
 import { revalidatePath } from 'next/cache'
 
 export type GenerateReportResult = {
@@ -12,7 +12,7 @@ export type GenerateReportResult = {
 }
 
 /**
- * Generate AI narrative for a report
+ * Generate institutional-quality AI narrative for a report
  */
 export async function generateReport(reportId: string): Promise<GenerateReportResult> {
   const { userId } = await auth()
@@ -24,7 +24,10 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
     // 1. Update status to "generating"
     await supabase
       .from('reports')
-      .update({ status: 'generating', updated_at: new Date().toISOString() })
+      .update({ 
+        status: 'generating', 
+        updated_at: new Date().toISOString() 
+      })
       .eq('id', reportId)
       .eq('user_id', userId)
 
@@ -43,40 +46,37 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       throw new Error('Report not found')
     }
 
-    // 3. Fetch uploaded files
+    // 3. Fetch uploaded files metadata
     const { data: files } = await supabase
       .from('report_files')
-      .select('*')
+      .select('file_name, file_type')
       .eq('report_id', reportId)
       .eq('user_id', userId)
 
-    // 4. Extract content from files (basic for V1)
-    let financialContext = ''
-    if (files && files.length > 0) {
-      const fileDescriptions = files.map(f => 
-        `- ${f.file_name} (${f.file_type}, uploaded ${new Date(f.created_at).toLocaleDateString()})`
-      )
-      financialContext = `Uploaded documents:\n${fileDescriptions.join('\n')}\n\n[Note: Full document parsing coming in future update. Please reference the context provided by the asset manager below.]`
+    // 4. Build context objects
+    const propertyContext: PropertyContext = {
+      name: report.property?.name || 'Unknown Property',
+      address: report.property?.address,
+      city: report.property?.city,
+      state: report.property?.state,
+      units: report.property?.units,
     }
 
-    // 5. Call Claude to generate narrative
-    const result = await generateReportNarrative(
-      report.property?.name || 'Unknown Property',
-      {
-        address: report.property?.address,
-        city: report.property?.city,
-        state: report.property?.state,
-        units: report.property?.units
-      },
-      report.month,
-      report.year,
-      report.questionnaire || {},
-      report.freeform_narrative,
-      financialContext
-    )
+    const reportContext: ReportContext = {
+      month: report.month,
+      year: report.year,
+      questionnaire: report.questionnaire || {},
+      freeformNarrative: report.freeform_narrative,
+      uploadedFiles: (files || []).map(f => ({
+        name: f.file_name,
+        type: f.file_type,
+      })),
+    }
+
+    // 5. Call Claude to generate institutional-quality narrative
+    const result = await generateInstitutionalReport(propertyContext, reportContext)
 
     if (!result.success) {
-      // Update status to error
       await supabase
         .from('reports')
         .update({ 
@@ -89,57 +89,96 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       return { success: false, error: result.error }
     }
 
-    // 6. Save the generated narrative and update status
+    // 6. Save the generated narrative and structured content
+    const updateData: Record<string, unknown> = {
+      narrative: result.narrative,
+      status: 'complete',
+      updated_at: new Date().toISOString(),
+    }
+
+    // Save structured sections if available
+    if (result.structuredSections) {
+      updateData.content = result.structuredSections
+    }
+
     await supabase
       .from('reports')
-      .update({ 
-        narrative: result.narrative,
-        status: 'complete',
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', reportId)
       .eq('user_id', userId)
 
     revalidatePath(`/dashboard/reports/${reportId}`)
 
-    return { 
-      success: true, 
-      narrative: result.narrative 
+    return {
+      success: true,
+      narrative: result.narrative,
     }
 
   } catch (error) {
     console.error('Generate report error:', error)
-    
-    // Update status to error
+
     await supabase
       .from('reports')
       .update({ status: 'error' })
       .eq('id', reportId)
       .eq('user_id', userId)
 
-    return { 
-      success: false, 
-      error: error instanceof Error ? error.message : 'Generation failed' 
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Generation failed',
     }
   }
 }
 
 /**
- * Regenerate a report (if user wants to try again)
+ * Regenerate a report with fresh AI output
  */
 export async function regenerateReport(reportId: string): Promise<GenerateReportResult> {
-  // Reset status to draft first
   const { userId } = await auth()
   if (!userId) {
     return { success: false, error: 'Unauthorized' }
   }
 
+  // Reset status and clear old narrative
   await supabase
     .from('reports')
-    .update({ status: 'draft', narrative: null })
+    .update({ 
+      status: 'draft', 
+      narrative: null,
+      content: {},
+    })
     .eq('id', reportId)
     .eq('user_id', userId)
 
-  // Then generate fresh
+  // Generate fresh
   return generateReport(reportId)
+}
+
+/**
+ * Update just the narrative (for manual edits)
+ */
+export async function updateNarrative(
+  reportId: string, 
+  narrative: string
+): Promise<{ success: boolean; error?: string }> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { success: false, error: 'Unauthorized' }
+  }
+
+  const { error } = await supabase
+    .from('reports')
+    .update({ 
+      narrative,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', reportId)
+    .eq('user_id', userId)
+
+  if (error) {
+    return { success: false, error: error.message }
+  }
+
+  revalidatePath(`/dashboard/reports/${reportId}`)
+  return { success: true }
 }
