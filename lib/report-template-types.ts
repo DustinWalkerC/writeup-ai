@@ -38,7 +38,7 @@ export type ReportTemplateData = {
   propertyAddress?: string
   reportPeriod: string // "January 2025"
   reportDate: string // "February 5, 2025"
-  
+
   // KPI Dashboard (top of report)
   kpis: {
     occupancy?: KPIMetric
@@ -48,7 +48,7 @@ export type ReportTemplateData = {
     leaseVelocity?: KPIMetric
     renewalRate?: KPIMetric
   }
-  
+
   // Progress Indicators
   progress?: {
     occupancyTarget?: ProgressMetric
@@ -56,14 +56,14 @@ export type ReportTemplateData = {
     capexCompletion?: ProgressMetric
     leaseUpProgress?: ProgressMetric
   }
-  
+
   // Financial Summary Table
   financialSummary?: {
     revenue?: TableRow[]
     expenses?: TableRow[]
     noi?: TableRow
   }
-  
+
   // Narrative Sections (from AI)
   sections: {
     id: string
@@ -71,10 +71,15 @@ export type ReportTemplateData = {
     content: string
     order: number
   }[]
-  
+
   // Metadata
   templateVersion: string
   generatedAt: string
+
+  // Branding / footer
+  companyName: string
+  disclaimer: string
+  accentColor: string
 }
 
 /**

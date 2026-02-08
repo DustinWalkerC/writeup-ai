@@ -1,4 +1,5 @@
 import { getReport } from '@/app/actions/reports'
+import { getUserSettings } from '@/app/actions/settings'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ReportViewer } from './report-viewer'
@@ -9,7 +10,10 @@ export default async function ReportViewPage({
   params: Promise<{ id: string }>
 }) {
   const { id } = await params
-  const report = await getReport(id)
+  const [report, userSettings] = await Promise.all([
+    getReport(id),
+    getUserSettings(),
+  ])
 
   if (!report) {
     redirect('/dashboard/reports')
@@ -63,12 +67,8 @@ export default async function ReportViewPage({
           updated_at: report.updated_at,
           property: report.property,
         }}
+        userSettings={userSettings}
       />
     </div>
   )
 }
-
-
-
-
-

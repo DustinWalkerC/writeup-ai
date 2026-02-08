@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { SectionEditor } from './section-editor'
 import { saveSection, regenerateSection } from '@/app/actions/ai'
 import { REPORT_SECTIONS } from '@/lib/report-sections'
-import { StructuredContent, Property } from '@/lib/supabase'
+import { StructuredContent, Property, UserSettings } from '@/lib/supabase'
 import { ReportTemplate } from '@/components/report-template'
 import { extractReportTemplateData } from '@/lib/report-data-extractor'
 
@@ -22,14 +22,16 @@ type Props = {
     updated_at: string
     property?: Property
   }
+  userSettings?: UserSettings | null
 }
 
 type ViewMode = 'sections' | 'preview' | 'formatted'
 
-export function ReportViewer({ reportId, report }: Props) {
+export function ReportViewer({ reportId, report, userSettings }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('formatted')
   const [regeneratingSection, setRegeneratingSection] = useState<string | null>(null)
-  const [sections, setSections] = useState(() => 
+
+  const [sections, setSections] = useState(() =>
     parseStructuredContent(report.content as StructuredContent, report.narrative)
   )
 
@@ -57,7 +59,7 @@ export function ReportViewer({ reportId, report }: Props) {
       const title = match[1].trim()
       const content = match[2].trim()
       const sectionId = mapTitleToSectionId(title)
-      const def = REPORT_SECTIONS.find(s => s.id === sectionId)
+      const def = REPORT_SECTIONS.find((s) => s.id === sectionId)
 
       sections[sectionId] = {
         title,
@@ -83,7 +85,7 @@ export function ReportViewer({ reportId, report }: Props) {
   const handleSaveSection = async (sectionId: string, content: string) => {
     const result = await saveSection(reportId, sectionId, content)
     if (result.success) {
-      setSections(prev => ({
+      setSections((prev) => ({
         ...prev,
         [sectionId]: { ...prev[sectionId], content },
       }))
@@ -97,7 +99,7 @@ export function ReportViewer({ reportId, report }: Props) {
     try {
       const result = await regenerateSection(reportId, sectionId)
       if (result.success && result.content) {
-        setSections(prev => ({
+        setSections((prev) => ({
           ...prev,
           [sectionId]: { ...prev[sectionId], content: result.content! },
         }))
@@ -110,7 +112,7 @@ export function ReportViewer({ reportId, report }: Props) {
   }
 
   const orderedSections = useMemo(() => {
-    return REPORT_SECTIONS.map(def => ({
+    return REPORT_SECTIONS.map((def) => ({
       ...def,
       ...sections[def.id],
       content: sections[def.id]?.content || '',
@@ -119,12 +121,11 @@ export function ReportViewer({ reportId, report }: Props) {
 
   const previewNarrative = useMemo(() => {
     return orderedSections
-      .filter(s => s.content)
-      .map(s => `## ${s.title}\n\n${s.content}`)
+      .filter((s) => s.content)
+      .map((s) => `## ${s.title}\n\n${s.content}`)
       .join('\n\n')
   }, [orderedSections])
 
-  // Build template data
   const templateData = useMemo(() => {
     return extractReportTemplateData(
       {
@@ -132,16 +133,16 @@ export function ReportViewer({ reportId, report }: Props) {
         content: { sections } as StructuredContent,
         narrative: previewNarrative,
       } as any,
-      report.property
+      report.property,
+      userSettings
     )
-  }, [report, sections, previewNarrative])
+  }, [report, sections, previewNarrative, userSettings])
 
   return (
     <div className="bg-white rounded-lg border border-slate-200">
       {/* Toolbar */}
       <div className="flex items-center justify-between p-4 border-b border-slate-200">
         <div className="flex items-center gap-2">
-          {/* View Mode Toggle */}
           <div className="flex bg-slate-100 rounded-lg p-1">
             <button
               onClick={() => setViewMode('formatted')}
@@ -179,13 +180,13 @@ export function ReportViewer({ reportId, report }: Props) {
         <div className="flex items-center gap-2">
           <button
             className="px-3 py-1.5 bg-slate-100 text-slate-400 rounded text-sm font-medium cursor-not-allowed"
-            title="Coming Day 9"
+            title="Coming later"
           >
             Export PDF
           </button>
           <button
             className="px-3 py-1.5 bg-slate-100 text-slate-400 rounded text-sm font-medium cursor-not-allowed"
-            title="Coming Day 9"
+            title="Coming later"
           >
             Export HTML
           </button>
@@ -194,9 +195,7 @@ export function ReportViewer({ reportId, report }: Props) {
 
       {/* Content Area */}
       <div className={viewMode === 'formatted' ? '' : 'p-6'}>
-        {viewMode === 'formatted' && (
-          <ReportTemplate data={templateData} />
-        )}
+        {viewMode === 'formatted' && <ReportTemplate data={templateData} />}
 
         {viewMode === 'sections' && (
           <div className="space-y-4">
@@ -226,10 +225,7 @@ export function ReportViewer({ reportId, report }: Props) {
 
       {/* Footer Actions */}
       <div className="flex items-center justify-between p-4 border-t border-slate-200 bg-slate-50">
-        <Link
-          href={`/dashboard/reports/${reportId}/generate`}
-          className="text-slate-600 hover:text-slate-900 text-sm"
-        >
+        <Link href={`/dashboard/reports/${reportId}/generate`} className="text-slate-600 hover:text-slate-900 text-sm">
           Regenerate Entire Report
         </Link>
         <Link
@@ -242,3 +238,4 @@ export function ReportViewer({ reportId, report }: Props) {
     </div>
   )
 }
+

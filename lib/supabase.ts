@@ -180,3 +180,18 @@ export type Report = {
   property?: Property
 }
 
+// Add this type with your other types
+
+export type UserSettings = {
+  id: string
+  user_id: string
+  company_name: string | null
+  company_logo_url: string | null
+  accent_color: string
+  color_scheme: 'professional' | 'monochromatic' | 'custom'
+  secondary_color: string | null
+  ai_tone: 'conservative' | 'balanced' | 'optimistic'
+  custom_disclaimer: string | null
+  created_at: string
+  updated_at: string
+}
