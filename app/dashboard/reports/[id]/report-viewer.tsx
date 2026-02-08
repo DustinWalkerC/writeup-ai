@@ -5,50 +5,44 @@ import Link from 'next/link'
 import { SectionEditor } from './section-editor'
 import { saveSection, regenerateSection } from '@/app/actions/ai'
 import { REPORT_SECTIONS } from '@/lib/report-sections'
-import { StructuredContent } from '@/lib/supabase'
+import { StructuredContent, Property } from '@/lib/supabase'
+import { ReportTemplate } from '@/components/report-template'
+import { extractReportTemplateData } from '@/lib/report-data-extractor'
 
 type Props = {
   reportId: string
-  narrative: string | null
-  structuredContent: StructuredContent | Record<string, unknown> | null
-  propertyName: string
-  month: string
-  year: number
+  report: {
+    id: string
+    month: string
+    year: number
+    narrative: string | null
+    content: StructuredContent | Record<string, unknown> | null
+    questionnaire: Record<string, unknown>
+    template_version: string
+    updated_at: string
+    property?: Property
+  }
 }
 
-type ViewMode = 'sections' | 'preview'
+type ViewMode = 'sections' | 'preview' | 'formatted'
 
-export function ReportViewer({
-  reportId,
-  narrative,
-  structuredContent,
-  propertyName,
-  month,
-  year,
-}: Props) {
-  const [viewMode, setViewMode] = useState<ViewMode>('sections')
+export function ReportViewer({ reportId, report }: Props) {
+  const [viewMode, setViewMode] = useState<ViewMode>('formatted')
   const [regeneratingSection, setRegeneratingSection] = useState<string | null>(null)
-  const [sections, setSections] = useState(() => parseStructuredContent(structuredContent, narrative))
+  const [sections, setSections] = useState(() => 
+    parseStructuredContent(report.content as StructuredContent, report.narrative)
+  )
 
-  // Parse sections from either structured content or raw narrative
   function parseStructuredContent(
-    content: StructuredContent | Record<string, unknown> | null,
+    content: StructuredContent | null,
     fallbackNarrative: string | null
   ): Record<string, { title: string; content: string; order: number }> {
-    // Try to use structured content first
-    if (content && typeof content === 'object' && 'sections' in content) {
-      const structured = content as StructuredContent
-      if (structured.sections && Object.keys(structured.sections).length > 0) {
-        return structured.sections
-      }
+    if (content?.sections && Object.keys(content.sections).length > 0) {
+      return content.sections
     }
-
-    // Fall back to parsing narrative
     if (fallbackNarrative) {
       return parseNarrativeIntoSections(fallbackNarrative)
     }
-
-    // Return empty sections
     return {}
   }
 
@@ -91,10 +85,7 @@ export function ReportViewer({
     if (result.success) {
       setSections(prev => ({
         ...prev,
-        [sectionId]: {
-          ...prev[sectionId],
-          content,
-        },
+        [sectionId]: { ...prev[sectionId], content },
       }))
     } else {
       throw new Error(result.error)
@@ -108,10 +99,7 @@ export function ReportViewer({
       if (result.success && result.content) {
         setSections(prev => ({
           ...prev,
-          [sectionId]: {
-            ...prev[sectionId],
-            content: result.content!,
-          },
+          [sectionId]: { ...prev[sectionId], content: result.content! },
         }))
       } else {
         alert(result.error || 'Failed to regenerate section')
@@ -121,24 +109,32 @@ export function ReportViewer({
     }
   }
 
-  // Order sections for display
   const orderedSections = useMemo(() => {
-    return REPORT_SECTIONS
-      .map(def => ({
-        ...def,
-        ...sections[def.id],
-        content: sections[def.id]?.content || '',
-      }))
-      .sort((a, b) => a.order - b.order)
+    return REPORT_SECTIONS.map(def => ({
+      ...def,
+      ...sections[def.id],
+      content: sections[def.id]?.content || '',
+    })).sort((a, b) => a.order - b.order)
   }, [sections])
 
-  // Build preview narrative
   const previewNarrative = useMemo(() => {
     return orderedSections
       .filter(s => s.content)
       .map(s => `## ${s.title}\n\n${s.content}`)
       .join('\n\n')
   }, [orderedSections])
+
+  // Build template data
+  const templateData = useMemo(() => {
+    return extractReportTemplateData(
+      {
+        ...report,
+        content: { sections } as StructuredContent,
+        narrative: previewNarrative,
+      } as any,
+      report.property
+    )
+  }, [report, sections, previewNarrative])
 
   return (
     <div className="bg-white rounded-lg border border-slate-200">
@@ -148,6 +144,16 @@ export function ReportViewer({
           {/* View Mode Toggle */}
           <div className="flex bg-slate-100 rounded-lg p-1">
             <button
+              onClick={() => setViewMode('formatted')}
+              className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+                viewMode === 'formatted'
+                  ? 'bg-white text-slate-900 shadow-sm'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              Formatted
+            </button>
+            <button
               onClick={() => setViewMode('sections')}
               className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
                 viewMode === 'sections'
@@ -155,7 +161,7 @@ export function ReportViewer({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              ✏️ Edit Sections
+              Edit Sections
             </button>
             <button
               onClick={() => setViewMode('preview')}
@@ -165,38 +171,34 @@ export function ReportViewer({
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
-              👁️ Preview
+              Raw Text
             </button>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Export buttons - placeholders for Day 8-9 */}
           <button
             className="px-3 py-1.5 bg-slate-100 text-slate-400 rounded text-sm font-medium cursor-not-allowed"
             title="Coming Day 9"
           >
-            📄 Export PDF
+            Export PDF
           </button>
           <button
             className="px-3 py-1.5 bg-slate-100 text-slate-400 rounded text-sm font-medium cursor-not-allowed"
             title="Coming Day 9"
           >
-            🌐 Export HTML
+            Export HTML
           </button>
         </div>
       </div>
 
-      {/* Report Header */}
-      <div className="text-center py-6 px-8 border-b border-slate-100">
-        <h2 className="text-2xl font-bold text-slate-900">Monthly Investor Report</h2>
-        <p className="text-lg text-slate-600 mt-1">{propertyName}</p>
-        <p className="text-slate-500">{month} {year}</p>
-      </div>
-
       {/* Content Area */}
-      <div className="p-6">
-        {viewMode === 'sections' ? (
+      <div className={viewMode === 'formatted' ? '' : 'p-6'}>
+        {viewMode === 'formatted' && (
+          <ReportTemplate data={templateData} />
+        )}
+
+        {viewMode === 'sections' && (
           <div className="space-y-4">
             {orderedSections.map((section) => (
               <SectionEditor
@@ -211,28 +213,13 @@ export function ReportViewer({
               />
             ))}
           </div>
-        ) : (
+        )}
+
+        {viewMode === 'preview' && (
           <div className="prose prose-slate max-w-none">
-            {previewNarrative.split('\n').map((line, i) => {
-              if (line.startsWith('## ')) {
-                return (
-                  <h3
-                    key={i}
-                    className="text-xl font-semibold text-slate-900 mt-8 mb-4 first:mt-0 pb-2 border-b border-slate-200"
-                  >
-                    {line.replace('## ', '')}
-                  </h3>
-                )
-              }
-              if (line.trim()) {
-                return (
-                  <p key={i} className="text-slate-700 mb-4 leading-relaxed">
-                    {line}
-                  </p>
-                )
-              }
-              return null
-            })}
+            <pre className="whitespace-pre-wrap font-mono text-sm bg-slate-50 p-4 rounded-lg">
+              {previewNarrative}
+            </pre>
           </div>
         )}
       </div>
@@ -243,7 +230,7 @@ export function ReportViewer({
           href={`/dashboard/reports/${reportId}/generate`}
           className="text-slate-600 hover:text-slate-900 text-sm"
         >
-          🔄 Regenerate Entire Report
+          Regenerate Entire Report
         </Link>
         <Link
           href="/dashboard/reports"

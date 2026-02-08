@@ -2,12 +2,11 @@ import { getReport } from '@/app/actions/reports'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { ReportViewer } from './report-viewer'
-import { StructuredContent } from '@/lib/supabase'
 
-export default async function ReportViewPage({ 
-  params 
-}: { 
-  params: Promise<{ id: string }> 
+export default async function ReportViewPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
 }) {
   const { id } = await params
   const report = await getReport(id)
@@ -16,18 +15,16 @@ export default async function ReportViewPage({
     redirect('/dashboard/reports')
   }
 
-  // If still draft, redirect to edit
   if (report.status === 'draft') {
     redirect(`/dashboard/reports/${id}/edit`)
   }
 
-  // If generating, redirect to generate page
   if (report.status === 'generating') {
     redirect(`/dashboard/reports/${id}/generate`)
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <div className="max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
@@ -55,15 +52,22 @@ export default async function ReportViewPage({
       {/* Report Content */}
       <ReportViewer
         reportId={report.id}
-        narrative={report.narrative}
-        structuredContent={report.content as StructuredContent}
-        propertyName={report.property?.name || 'Property'}
-        month={report.month}
-        year={report.year}
+        report={{
+          id: report.id,
+          month: report.month,
+          year: report.year,
+          narrative: report.narrative,
+          content: report.content,
+          questionnaire: report.questionnaire || {},
+          template_version: report.template_version,
+          updated_at: report.updated_at,
+          property: report.property,
+        }}
       />
     </div>
   )
 }
+
 
 
 
