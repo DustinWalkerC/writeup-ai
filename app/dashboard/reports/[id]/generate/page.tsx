@@ -21,7 +21,6 @@ export default async function GeneratePage({
       month={report.month}
       year={report.year}
       initialStatus={report.status}
-      initialNarrative={report.narrative}
     />
   )
 }

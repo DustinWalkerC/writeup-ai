@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { FileUploader } from './file-uploader'
 import { Questionnaire } from './questionnaire'
+import { QuestionnaireData } from '@/lib/supabase'
 
 export default async function EditReportPage({ 
   params 
@@ -18,7 +19,6 @@ export default async function EditReportPage({
 
   const files = await getReportFiles(id)
 
-  // ... rest of the component stays the same
   return (
     <div className="max-w-4xl mx-auto">
       {/* Header */}
@@ -79,11 +79,12 @@ export default async function EditReportPage({
       <section className="bg-white rounded-lg border border-slate-200 p-6">
         <Questionnaire
           reportId={report.id}
-          initialData={report.questionnaire}
-          initialMode={report.input_mode}
+          initialData={report.questionnaire as QuestionnaireData}
+          initialMode={report.input_mode as 'guided' | 'freeform'}
           initialFreeform={report.freeform_narrative}
         />
       </section>
     </div>
   )
 }
+

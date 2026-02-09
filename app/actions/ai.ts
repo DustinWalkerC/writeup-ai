@@ -4,6 +4,12 @@ import { auth } from '@clerk/nextjs/server'
 import { supabase } from '@/lib/supabase'
 import { generateInstitutionalReport, PropertyContext, ReportContext } from '@/lib/claude'
 import { revalidatePath } from 'next/cache'
+import { REPORT_SECTIONS } from '@/lib/report-sections'
+import { parseReportFilesWithAI } from './files'
+import { 
+  ExtractedFinancialData, 
+  formatFinancialContextForReport 
+} from '@/lib/document-intelligence'
 
 export type GenerateReportResult = {
   success: boolean
@@ -11,8 +17,14 @@ export type GenerateReportResult = {
   error?: string
 }
 
+type ReportFile = {
+  file_name: string
+  file_type: string
+}
+
 /**
  * Generate institutional-quality AI narrative for a report
+ * Now with Claude-powered file parsing for T-12 data
  */
 export async function generateReport(reportId: string): Promise<GenerateReportResult> {
   const { userId } = await auth()
@@ -31,12 +43,13 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       .eq('id', reportId)
       .eq('user_id', userId)
 
-    // 2. Fetch the report with property info
+    // 2. Fetch the report with property info and files
     const { data: report, error: reportError } = await supabase
       .from('reports')
       .select(`
         *,
-        property:properties(*)
+        property:properties(*),
+        report_files(*)
       `)
       .eq('id', reportId)
       .eq('user_id', userId)
@@ -46,14 +59,34 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       throw new Error('Report not found')
     }
 
-    // 3. Fetch uploaded files metadata
-    const { data: files } = await supabase
-      .from('report_files')
-      .select('file_name, file_type')
-      .eq('report_id', reportId)
-      .eq('user_id', userId)
+    // 3. === CLAUDE-POWERED FILE PARSING ===
+    let financialData: ExtractedFinancialData | null = null
+    let financialContext = ''
+    
+    const reportFiles: ReportFile[] = report.report_files || []
+    const hasFinancialFiles = reportFiles.some((file) => {
+      const name = file.file_name.toLowerCase()
+      return name.endsWith('.xlsx') || name.endsWith('.xls') || name.endsWith('.pdf')
+    })
 
-    // 4. Build context objects
+    if (hasFinancialFiles) {
+      console.log('Parsing financial files with Claude...')
+      const parseResult = await parseReportFilesWithAI(reportId)
+      
+      if (parseResult.success && parseResult.data) {
+        financialData = parseResult.data
+        financialContext = formatFinancialContextForReport(financialData)
+        console.log('Financial data extracted:', {
+          revenue: financialData.summary.totalRevenue,
+          noi: financialData.summary.noi,
+          confidence: financialData.metadata.confidence,
+        })
+      } else {
+        console.warn('Could not parse financial files:', parseResult.error)
+      }
+    }
+
+    // 4. Build context objects for Claude
     const propertyContext: PropertyContext = {
       name: report.property?.name || 'Unknown Property',
       address: report.property?.address,
@@ -62,12 +95,18 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       units: report.property?.units,
     }
 
+    // Build enhanced context with financial data
+    const enhancedFreeformNarrative = buildEnhancedContext(
+      financialContext,
+      report.freeform_narrative
+    )
+
     const reportContext: ReportContext = {
       month: report.month,
       year: report.year,
       questionnaire: report.questionnaire || {},
-      freeformNarrative: report.freeform_narrative,
-      uploadedFiles: (files || []).map(f => ({
+      freeformNarrative: enhancedFreeformNarrative,
+      uploadedFiles: reportFiles.map(f => ({
         name: f.file_name,
         type: f.file_type,
       })),
@@ -89,7 +128,7 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       return { success: false, error: result.error }
     }
 
-    // 6. Save the generated narrative and structured content
+    // 6. Save the generated narrative, structured content, and financial data
     const updateData: Record<string, unknown> = {
       narrative: result.narrative,
       status: 'complete',
@@ -99,6 +138,11 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
     // Save structured sections if available
     if (result.structuredSections) {
       updateData.content = result.structuredSections
+    }
+
+    // Save financial data if we parsed it
+    if (financialData) {
+      updateData.financial_data = financialData
     }
 
     await supabase
@@ -131,6 +175,27 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
 }
 
 /**
+ * Build enhanced context by combining financial data with freeform narrative
+ */
+function buildEnhancedContext(
+  financialContext: string,
+  freeformNarrative: string | null
+): string {
+  const parts: string[] = []
+  
+  if (financialContext) {
+    parts.push(financialContext)
+  }
+  
+  if (freeformNarrative) {
+    parts.push('\n## Additional Notes from Property Manager\n')
+    parts.push(freeformNarrative)
+  }
+  
+  return parts.join('\n')
+}
+
+/**
  * Regenerate a report with fresh AI output
  */
 export async function regenerateReport(reportId: string): Promise<GenerateReportResult> {
@@ -146,6 +211,7 @@ export async function regenerateReport(reportId: string): Promise<GenerateReport
       status: 'draft', 
       narrative: null,
       content: {},
+      financial_data: null,
     })
     .eq('id', reportId)
     .eq('user_id', userId)
@@ -182,10 +248,6 @@ export async function updateNarrative(
   revalidatePath(`/dashboard/reports/${reportId}`)
   return { success: true }
 }
-// Add these imports at the top if not present
-import { REPORT_SECTIONS } from '@/lib/report-sections'
-
-// ... existing code ...
 
 /**
  * Save a single section's content

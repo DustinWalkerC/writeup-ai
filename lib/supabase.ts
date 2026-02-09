@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import type { ExtractedFinancialData } from './document-intelligence'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -21,8 +22,6 @@ export type Property = {
   updated_at: string
 }
 
-
-
 export type ReportFile = {
   id: string
   report_id: string
@@ -31,6 +30,7 @@ export type ReportFile = {
   file_type: 'excel' | 'pdf' | 'csv'
   file_size: number | null
   storage_path: string
+  file_path: string
   processing_status: 'pending' | 'processing' | 'complete' | 'error'
   processing_error: string | null
   extracted_data: Record<string, unknown>
@@ -43,14 +43,14 @@ export type ReportFile = {
 export type DetectedProperty = {
   name: string
   confidence: number
-  row_range?: string  // e.g., "A5:Z50"
+  row_range?: string
 }
 
 export type ReportImage = {
   id: string
   url: string
   caption: string | null
-  section: string | null  // Which section of report it belongs to
+  section: string | null
 }
 
 // ===================
@@ -140,7 +140,11 @@ export const MONTHS = [
 ] as const
 
 export type MonthName = typeof MONTHS[number]
-// Add this type for structured sections
+
+// ===================
+// Structured Content Types
+// ===================
+
 export type ReportSectionContent = {
   title: string
   content: string
@@ -159,7 +163,10 @@ export type StructuredContent = {
   }
 }
 
-// Update the Report type to include structured content
+// ===================
+// Report Type (Single Definition)
+// ===================
+
 export type Report = {
   id: string
   property_id: string
@@ -167,20 +174,23 @@ export type Report = {
   month: string
   year: number
   status: 'draft' | 'generating' | 'complete' | 'error'
-  content: StructuredContent | Record<string, unknown>  // Updated
-  financial_data: Record<string, unknown>
-  questionnaire: QuestionnaireData
+  content: StructuredContent | Record<string, unknown> | null
+  financial_data: ExtractedFinancialData | null
+  questionnaire: QuestionnaireData | Record<string, Record<string, string>> | null
   narrative: string | null
-  images: ReportImage[]
+  images?: ReportImage[]
   template_version: string
-  input_mode: 'guided' | 'freeform'
+  input_mode: 'guided' | 'freeform' | null
   freeform_narrative: string | null
   created_at: string
   updated_at: string
   property?: Property
+  report_files?: ReportFile[]
 }
 
-// Add this type with your other types
+// ===================
+// User Settings Type
+// ===================
 
 export type UserSettings = {
   id: string
