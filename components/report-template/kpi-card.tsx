@@ -2,18 +2,22 @@ import { KPIMetric } from '@/lib/report-template-types'
 
 type Props = {
   metric: KPIMetric
+  accentColor?: string
 }
 
-export function KPICard({ metric }: Props) {
-  const formatValue = (value: string | number, format: KPIMetric['format']) => {
+export function KPICard({ metric, accentColor = '#0f172a' }: Props) {
+  const formatValue = (value: number | string, format: KPIMetric['format']) => {
     if (typeof value === 'string') return value
+    
     switch (format) {
       case 'percent':
         return `${value.toFixed(1)}%`
       case 'currency':
-        if (value >= 1000000) return `$${(value / 1000000).toFixed(1)}M`
-        if (value >= 1000) return `$${(value / 1000).toFixed(0)}K`
-        return `$${value.toLocaleString()}`
+        return value >= 1000000
+          ? `$${(value / 1000000).toFixed(1)}M`
+          : value >= 1000
+          ? `$${(value / 1000).toFixed(0)}K`
+          : `$${value.toLocaleString()}`
       case 'number':
         return value.toLocaleString()
       default:
@@ -21,68 +25,78 @@ export function KPICard({ metric }: Props) {
     }
   }
 
-  const statusColors = {
-    good: { bg: '#ecfdf5', border: '#10b981', text: '#059669' },
-    warning: { bg: '#fffbeb', border: '#f59e0b', text: '#d97706' },
-    critical: { bg: '#fef2f2', border: '#ef4444', text: '#dc2626' },
-    neutral: { bg: '#f8fafc', border: '#e2e8f0', text: '#64748b' },
+  const getStatusColor = (status: KPIMetric['status']) => {
+    switch (status) {
+      case 'good':
+        return '#10b981'
+      case 'warning':
+        return '#f59e0b'
+      case 'critical':
+        return '#ef4444'
+      default:
+        return '#64748b'
+    }
   }
 
-  const status = metric.status || 'neutral'
-  const colors = statusColors[status]
+  const getChangeIcon = (direction: 'up' | 'down' | 'flat') => {
+    switch (direction) {
+      case 'up':
+        return '↑'
+      case 'down':
+        return '↓'
+      default:
+        return '→'
+    }
+  }
+
+  // Generate a lighter version of the accent color for background
+  const bgColor = `${accentColor}10`
 
   return (
     <div
-      className="kpi-card"
       style={{
-        backgroundColor: colors.bg,
-        border: `1px solid ${colors.border}`,
+        backgroundColor: bgColor,
         borderRadius: '8px',
-        padding: '20px',
-        textAlign: 'center',
+        padding: '16px',
+        border: `1px solid ${accentColor}20`,
       }}
     >
       <div
         style={{
-          fontSize: '2rem',
-          fontWeight: 700,
-          color: '#0f172a',
-          lineHeight: 1.2,
-        }}
-      >
-        {formatValue(metric.value, metric.format)}
-      </div>
-      <div
-        style={{
-          fontSize: '0.875rem',
-          color: '#64748b',
-          marginTop: '4px',
+          fontSize: '0.75rem',
           fontWeight: 500,
+          color: '#64748b',
+          textTransform: 'uppercase',
+          letterSpacing: '0.05em',
+          marginBottom: '8px',
         }}
       >
         {metric.label}
       </div>
+      <div
+        style={{
+          fontSize: '1.5rem',
+          fontWeight: 700,
+          color: accentColor,
+          marginBottom: metric.change ? '8px' : 0,
+        }}
+      >
+        {formatValue(metric.value, metric.format)}
+      </div>
       {metric.change && (
         <div
           style={{
-            fontSize: '0.8rem',
-            marginTop: '8px',
-            color:
-              metric.change.direction === 'up'
-                ? '#059669'
-                : metric.change.direction === 'down'
-                ? '#dc2626'
-                : '#64748b',
-            fontWeight: 500,
+            fontSize: '0.75rem',
+            color: getStatusColor(metric.status),
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px',
           }}
         >
-          {metric.change.direction === 'up'
-            ? '↑'
-            : metric.change.direction === 'down'
-            ? '↓'
-            : '→'}{' '}
-          {Math.abs(metric.change.value).toFixed(1)}
-          {metric.format === 'percent' ? '%' : ''} {metric.change.comparison}
+          <span>{getChangeIcon(metric.change.direction)}</span>
+          <span>
+            {metric.change.value.toFixed(1)}% {metric.change.comparison}
+          </span>
         </div>
       )}
     </div>

@@ -5,11 +5,23 @@ import { ProgressBar } from './progress-bar'
 type Props = {
   data: ReportTemplateData
   showDataVisualization?: boolean
+  userSettings?: {
+    company_name: string | null
+    company_logo_url: string | null
+    accent_color: string
+    custom_disclaimer: string | null
+  } | null
 }
 
-export function ReportTemplate({ data, showDataVisualization = true }: Props) {
+export function ReportTemplate({ data, showDataVisualization = true, userSettings }: Props) {
   const hasKPIs = data.kpis && Object.values(data.kpis).some(Boolean)
   const hasProgress = data.progress && Object.values(data.progress).some(Boolean)
+
+  // Branding values
+  const accentColor = userSettings?.accent_color || '#0f172a'
+  const companyName = userSettings?.company_name || data.companyName || 'Your Firm Name'
+  const logoUrl = userSettings?.company_logo_url
+  const customDisclaimer = userSettings?.custom_disclaimer
 
   return (
     <div
@@ -23,15 +35,46 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
         lineHeight: 1.6,
       }}
     >
-      {/* Report Header */}
-      <header style={{ marginBottom: '40px', borderBottom: '3px solid #0f172a', paddingBottom: '24px' }}>
+      {/* Report Header with Branding */}
+      <header 
+        style={{ 
+          marginBottom: '40px', 
+          borderBottom: `3px solid ${accentColor}`, 
+          paddingBottom: '24px' 
+        }}
+      >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
+            {/* Logo or Company Name */}
+            {logoUrl ? (
+              <img 
+                src={logoUrl} 
+                alt={companyName} 
+                style={{ 
+                  height: '40px', 
+                  objectFit: 'contain',
+                  marginBottom: '12px'
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  color: accentColor,
+                  marginBottom: '8px',
+                  textTransform: 'uppercase',
+                  letterSpacing: '0.05em',
+                }}
+              >
+                {companyName}
+              </div>
+            )}
             <h1
               style={{
                 fontSize: '1.75rem',
                 fontWeight: 700,
-                color: '#0f172a',
+                color: accentColor,
                 margin: 0,
                 letterSpacing: '-0.02em',
               }}
@@ -55,7 +98,7 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
             )}
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: '#0f172a' }}>
+            <div style={{ fontSize: '1.1rem', fontWeight: 600, color: accentColor }}>
               {data.reportPeriod}
             </div>
             <div style={{ fontSize: '0.85rem', color: '#64748b', marginTop: '4px' }}>
@@ -72,7 +115,7 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
             style={{
               fontSize: '0.8rem',
               fontWeight: 600,
-              color: '#64748b',
+              color: accentColor,
               textTransform: 'uppercase',
               letterSpacing: '0.1em',
               marginBottom: '16px',
@@ -87,10 +130,10 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
               gap: '16px',
             }}
           >
-            {data.kpis.occupancy && <KPICard metric={data.kpis.occupancy} />}
-            {data.kpis.collections && <KPICard metric={data.kpis.collections} />}
-            {data.kpis.avgRent && <KPICard metric={data.kpis.avgRent} />}
-            {data.kpis.noi && <KPICard metric={data.kpis.noi} />}
+            {data.kpis.occupancy && <KPICard metric={data.kpis.occupancy} accentColor={accentColor} />}
+            {data.kpis.collections && <KPICard metric={data.kpis.collections} accentColor={accentColor} />}
+            {data.kpis.avgRent && <KPICard metric={data.kpis.avgRent} accentColor={accentColor} />}
+            {data.kpis.noi && <KPICard metric={data.kpis.noi} accentColor={accentColor} />}
           </div>
           {(data.kpis.leaseVelocity || data.kpis.renewalRate) && (
             <div
@@ -101,8 +144,8 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
                 marginTop: '16px',
               }}
             >
-              {data.kpis.leaseVelocity && <KPICard metric={data.kpis.leaseVelocity} />}
-              {data.kpis.renewalRate && <KPICard metric={data.kpis.renewalRate} />}
+              {data.kpis.leaseVelocity && <KPICard metric={data.kpis.leaseVelocity} accentColor={accentColor} />}
+              {data.kpis.renewalRate && <KPICard metric={data.kpis.renewalRate} accentColor={accentColor} />}
             </div>
           )}
         </section>
@@ -122,7 +165,7 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
             style={{
               fontSize: '0.8rem',
               fontWeight: 600,
-              color: '#64748b',
+              color: accentColor,
               textTransform: 'uppercase',
               letterSpacing: '0.1em',
               marginBottom: '20px',
@@ -130,10 +173,10 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
           >
             Progress Toward Targets
           </h3>
-          {data.progress?.occupancyTarget && <ProgressBar metric={data.progress.occupancyTarget} />}
-          {data.progress?.budgetYTD && <ProgressBar metric={data.progress.budgetYTD} />}
-          {data.progress?.capexCompletion && <ProgressBar metric={data.progress.capexCompletion} />}
-          {data.progress?.leaseUpProgress && <ProgressBar metric={data.progress.leaseUpProgress} />}
+          {data.progress?.occupancyTarget && <ProgressBar metric={data.progress.occupancyTarget} accentColor={accentColor} />}
+          {data.progress?.budgetYTD && <ProgressBar metric={data.progress.budgetYTD} accentColor={accentColor} />}
+          {data.progress?.capexCompletion && <ProgressBar metric={data.progress.capexCompletion} accentColor={accentColor} />}
+          {data.progress?.leaseUpProgress && <ProgressBar metric={data.progress.leaseUpProgress} accentColor={accentColor} />}
         </section>
       )}
 
@@ -147,7 +190,7 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
                 style={{
                   fontSize: '1.1rem',
                   fontWeight: 600,
-                  color: '#0f172a',
+                  color: accentColor,
                   marginBottom: '12px',
                   paddingBottom: '8px',
                   borderBottom: '1px solid #e2e8f0',
@@ -175,7 +218,7 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
           marginTop: '48px',
           paddingTop: '24px',
           paddingBottom: '24px',
-          borderTop: '2px solid #e2e8f0',
+          borderTop: `2px solid ${accentColor}20`,
         }}
       >
         {/* Disclaimer */}
@@ -195,7 +238,7 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
               lineHeight: 1.5,
             }}
           >
-            {data.disclaimer ||
+            {customDisclaimer || data.disclaimer ||
               'Confidential – For Investor Use Only. This report contains proprietary information and is intended solely for the use of the intended recipient(s). Any distribution or reproduction without prior written consent is strictly prohibited.'}
           </p>
         </div>
@@ -211,7 +254,15 @@ export function ReportTemplate({ data, showDataVisualization = true }: Props) {
           }}
         >
           <div>
-            <strong style={{ color: '#64748b' }}>{data.companyName || 'Your Firm Name'}</strong>
+            {logoUrl ? (
+              <img 
+                src={logoUrl} 
+                alt={companyName} 
+                style={{ height: '24px', objectFit: 'contain', opacity: 0.7 }}
+              />
+            ) : (
+              <strong style={{ color: accentColor }}>{companyName}</strong>
+            )}
           </div>
           <div style={{ textAlign: 'right' }}>
             Template v{data.templateVersion} |{' '}
