@@ -1,16 +1,20 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { getUserSettings, updateUserSettings, uploadCompanyLogo } from '@/app/actions/settings'
+import { useState, useEffect, useTransition } from 'react'
 import { LogoUploader } from '@/components/logo-uploader'
 import { ColorPicker } from '@/components/color-picker'
 import { generateColorPalette, getContrastColor } from '@/lib/branding'
 import { UserSettings } from '@/lib/supabase'
+import { 
+  getUserSettings, 
+  saveUserSettings, 
+  uploadCompanyLogo 
+} from '@/app/actions/settings'
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<UserSettings | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [isSaving, setIsSaving] = useState(false)
+  const [isPending, startTransition] = useTransition()
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle')
 
   // Form state
@@ -30,26 +34,25 @@ export default function SettingsPage() {
       setSettings(data)
       setCompanyName(data.company_name || '')
       setAccentColor(data.accent_color || '#162e4b')
-      setAiTone(data.ai_tone || 'balanced')
+      setAiTone((data.ai_tone as 'conservative' | 'balanced' | 'optimistic') || 'balanced')
       setCustomDisclaimer(data.custom_disclaimer || '')
     }
     setIsLoading(false)
   }
 
-  const handleSave = async () => {
-    setIsSaving(true)
+  const handleSave = () => {
     setSaveStatus('idle')
+    startTransition(async () => {
+      const result = await saveUserSettings({
+        company_name: companyName,
+        accent_color: accentColor,
+        ai_tone: aiTone,
+        custom_disclaimer: customDisclaimer,
+      })
 
-    const result = await updateUserSettings({
-      company_name: companyName,
-      accent_color: accentColor,
-      ai_tone: aiTone,
-      custom_disclaimer: customDisclaimer,
+      setSaveStatus(result.success ? 'saved' : 'error')
+      setTimeout(() => setSaveStatus('idle'), 3000)
     })
-
-    setIsSaving(false)
-    setSaveStatus(result.success ? 'saved' : 'error')
-    setTimeout(() => setSaveStatus('idle'), 3000)
   }
 
   const handleLogoUpload = async (file: File) => {
@@ -60,7 +63,7 @@ export default function SettingsPage() {
   }
 
   const handleLogoRemove = async () => {
-    await updateUserSettings({ company_logo_url: null })
+    await saveUserSettings({ company_logo_url: null })
     await loadSettings()
   }
 
@@ -169,10 +172,10 @@ export default function SettingsPage() {
           <div className="flex items-center gap-4">
             <button
               onClick={handleSave}
-              disabled={isSaving}
+              disabled={isPending}
               className="px-6 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 font-medium transition-all disabled:opacity-50"
             >
-              {isSaving ? 'Saving...' : 'Save Settings'}
+              {isPending ? 'Saving...' : 'Save Settings'}
             </button>
             {saveStatus === 'saved' && (
               <span className="text-emerald-600 text-sm font-medium">✓ Settings saved</span>
@@ -257,4 +260,3 @@ export default function SettingsPage() {
     </div>
   )
 }
-

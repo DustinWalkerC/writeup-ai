@@ -53,9 +53,9 @@ export async function getUserSettings(): Promise<UserSettings | null> {
 }
 
 /**
- * Update user settings
+ * Save/Update user settings
  */
-export async function updateUserSettings(
+export async function saveUserSettings(
   updates: Partial<UserSettings>
 ): Promise<{ success: boolean; error?: string }> {
   const { userId } = await auth()
@@ -143,7 +143,7 @@ export async function uploadCompanyLogo(
       .getPublicUrl(filename)
 
     // Update user settings with logo URL
-    const updateResult = await updateUserSettings({ 
+    const updateResult = await saveUserSettings({ 
       company_logo_url: urlData.publicUrl 
     })
 
@@ -158,5 +158,6 @@ export async function uploadCompanyLogo(
   }
 }
 
-// Alias for backward compatibility with settings-form.tsx
-export { updateUserSettings as createOrUpdateSettings }
+// Aliases for backward compatibility
+export { saveUserSettings as updateUserSettings }
+export { saveUserSettings as createOrUpdateSettings }
