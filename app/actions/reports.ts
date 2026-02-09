@@ -303,3 +303,37 @@ export async function saveFreeformNarrative(reportId: string, narrative: string)
   })
 }
 
+// Add this function to your src/app/actions/reports.ts file
+
+/**
+ * Update questionnaire data for a report
+ */
+export async function updateQuestionnaire(
+  reportId: string,
+  questionnaire: Record<string, unknown>,
+  inputMode: 'guided' | 'freeform',
+  freeformNarrative: string | null
+): Promise<{ success: boolean; error?: string }> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { success: false, error: 'Unauthorized' }
+  }
+
+  const { error } = await supabase
+    .from('reports')
+    .update({
+      questionnaire,
+      input_mode: inputMode,
+      freeform_narrative: freeformNarrative,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', reportId)
+    .eq('user_id', userId)
+
+  if (error) {
+    return { success: false, error: error.message }
+  }
+
+  revalidatePath(`/dashboard/reports/${reportId}/edit`)
+  return { success: true }
+}

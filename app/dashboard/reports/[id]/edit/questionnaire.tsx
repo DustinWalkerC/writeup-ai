@@ -1,270 +1,244 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import { updateQuestionnaire } from '@/app/actions/reports'
 import { QuestionnaireData } from '@/lib/supabase'
-import { saveQuestionnaire, saveFreeformNarrative, updateReport } from '@/app/actions/reports'
+
+type InputMode = 'guided' | 'freeform'
 
 type Props = {
   reportId: string
-  initialData: QuestionnaireData
-  initialMode: 'guided' | 'freeform'
+  initialData: QuestionnaireData | null
+  initialMode: InputMode | null
   initialFreeform: string | null
 }
 
-type SectionKey = keyof QuestionnaireData
-
-const sections: { key: SectionKey; title: string; icon: string; questions: { key: string; label: string; placeholder: string }[] }[] = [
+const QUESTIONNAIRE_SECTIONS = [
   {
-    key: 'occupancy',
+    id: 'occupancy',
     title: 'Occupancy & Leasing',
-    icon: '🏠',
     questions: [
-      { key: 'currentOccupancy', label: 'What is the current occupancy rate?', placeholder: 'e.g., 94.2% occupied (241/256 units)' },
-      { key: 'occupancyChange', label: 'How has occupancy changed this month?', placeholder: 'e.g., Up 1.5% from last month, trending toward stabilization' },
-      { key: 'leaseActivity', label: 'Describe new lease activity', placeholder: 'e.g., 12 new leases signed, averaging $1,450/month' },
-      { key: 'renewalRate', label: 'What is the renewal rate and any notable trends?', placeholder: 'e.g., 68% renewal rate, up from 62% last month' },
-    ],
+      { id: 'currentOccupancy', label: 'Current occupancy rate', placeholder: 'e.g., 94.5%' },
+      { id: 'occupancyChange', label: 'Change from last month', placeholder: 'e.g., +1.2% or -0.5%' },
+      { id: 'leaseActivity', label: 'Leasing activity this month', placeholder: 'e.g., 12 new leases, 8 renewals' },
+      { id: 'renewalRate', label: 'Renewal rate', placeholder: 'e.g., 65%' },
+    ]
   },
   {
-    key: 'collections',
+    id: 'collections',
     title: 'Collections & Delinquency',
-    icon: '💰',
     questions: [
-      { key: 'collectionRate', label: 'What is the collection rate for the month?', placeholder: 'e.g., 97.8% of billed rent collected' },
-      { key: 'delinquencyStatus', label: 'Describe any delinquency issues', placeholder: 'e.g., 3 units 30+ days past due, totaling $4,200' },
-      { key: 'badDebtWriteoffs', label: 'Any bad debt write-offs?', placeholder: 'e.g., Wrote off $1,500 from vacated unit, pursuing collections' },
-      { key: 'collectionActions', label: 'What collection actions are being taken?', placeholder: 'e.g., 2 units in eviction process, expected resolution by month end' },
-    ],
+      { id: 'collectionRate', label: 'Collection rate', placeholder: 'e.g., 98.2%' },
+      { id: 'delinquencyStatus', label: 'Delinquency status', placeholder: 'e.g., 3 units 30+ days past due' },
+      { id: 'badDebtWriteoffs', label: 'Bad debt write-offs', placeholder: 'e.g., $2,500 this month' },
+    ]
   },
   {
-    key: 'revenue',
-    title: 'Revenue & Trade-Outs',
-    icon: '📈',
+    id: 'revenue',
+    title: 'Revenue Performance',
     questions: [
-      { key: 'tradeOutAmount', label: 'What is the average trade-out amount?', placeholder: 'e.g., +$85 average increase on new leases vs. expiring' },
-      { key: 'rentGrowth', label: 'Describe overall rent growth trends', placeholder: 'e.g., Achieved 3.2% growth YoY, in line with budget' },
-      { key: 'otherIncomeChanges', label: 'Any changes to other income?', placeholder: 'e.g., Added $5/unit parking fee, generating additional $1,280/month' },
-      { key: 'concessions', label: 'Are you offering any concessions?', placeholder: 'e.g., Offering 1 month free on 15-month leases, 4 units used this month' },
-    ],
+      { id: 'tradeOutAmount', label: 'Average trade-out on new leases', placeholder: 'e.g., +$75/unit' },
+      { id: 'rentGrowth', label: 'Rent growth vs. prior year', placeholder: 'e.g., +4.2%' },
+      { id: 'otherIncomeChanges', label: 'Notable other income changes', placeholder: 'e.g., Parking revenue up 10%' },
+      { id: 'concessions', label: 'Concessions offered', placeholder: 'e.g., 1 month free on 2 units' },
+    ]
   },
   {
-    key: 'expenses',
-    title: 'Expenses & Variances',
-    icon: '📊',
+    id: 'expenses',
+    title: 'Expense Management',
     questions: [
-      { key: 'majorVariances', label: 'What are the major expense variances from budget?', placeholder: 'e.g., Utilities +12% due to cold snap, insurance -5% from re-negotiation' },
-      { key: 'unexpectedExpenses', label: 'Any unexpected expenses this month?', placeholder: 'e.g., $8,500 emergency HVAC repair in Building C' },
-      { key: 'savingsInitiatives', label: 'What cost savings initiatives are in progress?', placeholder: 'e.g., LED retrofit 60% complete, projecting $800/month savings' },
-    ],
+      { id: 'majorVariances', label: 'Major expense variances vs. budget', placeholder: 'e.g., Utilities 8% over budget' },
+      { id: 'unexpectedExpenses', label: 'Unexpected expenses', placeholder: 'e.g., Emergency HVAC repair $3,200' },
+      { id: 'savingsInitiatives', label: 'Cost-saving initiatives', placeholder: 'e.g., Renegotiated landscaping contract' },
+    ]
   },
   {
-    key: 'capex',
-    title: 'CapEx & Projects',
-    icon: '🔨',
+    id: 'capex',
+    title: 'Capital Projects',
     questions: [
-      { key: 'projectsCompleted', label: 'What projects were completed this month?', placeholder: 'e.g., Pool resurfacing complete, new fitness equipment installed' },
-      { key: 'projectsInProgress', label: 'What projects are currently in progress?', placeholder: 'e.g., Roof replacement Phase 2 - 40% complete, on schedule' },
-      { key: 'upcomingProjects', label: 'What major projects are upcoming?', placeholder: 'e.g., Clubhouse renovation starting Q2, $150K budget approved' },
-      { key: 'budgetStatus', label: 'How is CapEx tracking vs. budget?', placeholder: 'e.g., YTD spend $245K of $400K annual budget, on track' },
-    ],
+      { id: 'projectsCompleted', label: 'Projects completed this month', placeholder: 'e.g., Pool resurfacing complete' },
+      { id: 'projectsInProgress', label: 'Projects in progress', placeholder: 'e.g., Clubhouse renovation 60% complete' },
+      { id: 'upcomingProjects', label: 'Upcoming projects', placeholder: 'e.g., Roof replacement Q2' },
+      { id: 'budgetStatus', label: 'CapEx budget status', placeholder: 'e.g., 45% of annual budget spent' },
+    ]
   },
   {
-    key: 'operations',
+    id: 'operations',
     title: 'Operations',
-    icon: '⚙️',
     questions: [
-      { key: 'staffingChanges', label: 'Any staffing changes?', placeholder: 'e.g., New maintenance tech started, fully staffed now' },
-      { key: 'operationalWins', label: 'What operational wins occurred this month?', placeholder: 'e.g., Reduced turn time to 5 days, Google rating up to 4.2 stars' },
-      { key: 'operationalChallenges', label: 'What challenges did you face?', placeholder: 'e.g., Vendor delays on appliance deliveries, found alternative supplier' },
-      { key: 'vendorChanges', label: 'Any vendor changes?', placeholder: 'e.g., Switched landscaping vendor, saving $400/month' },
-    ],
+      { id: 'staffingChanges', label: 'Staffing changes', placeholder: 'e.g., New maintenance tech hired' },
+      { id: 'operationalWins', label: 'Operational wins', placeholder: 'e.g., Reduced turn time to 5 days' },
+      { id: 'operationalChallenges', label: 'Challenges encountered', placeholder: 'e.g., Vendor delays on appliances' },
+    ]
   },
   {
-    key: 'market',
-    title: 'Market & Competition',
-    icon: '🏙️',
+    id: 'market',
+    title: 'Market & Outlook',
     questions: [
-      { key: 'marketConditions', label: 'Describe current market conditions', placeholder: 'e.g., Strong demand continues, limited new supply in submarket' },
-      { key: 'competitorActivity', label: 'What are competitors doing?', placeholder: 'e.g., Competitor at 123 Main offering 6 weeks free, we remain competitive without' },
-      { key: 'demandTrends', label: 'What demand trends are you seeing?', placeholder: 'e.g., Increased inquiries from young professionals, adjusting marketing' },
-    ],
-  },
-  {
-    key: 'risks',
-    title: 'Risks & Mitigation',
-    icon: '⚠️',
-    questions: [
-      { key: 'currentRisks', label: 'What risks are you monitoring?', placeholder: 'e.g., Property tax reassessment pending, potential 8% increase' },
-      { key: 'mitigationSteps', label: 'What mitigation steps are being taken?', placeholder: 'e.g., Engaged tax consultant for appeal, building reserve' },
-      { key: 'insuranceClaims', label: 'Any insurance claims or incidents?', placeholder: 'e.g., Minor water damage claim filed, $2,500 deductible paid' },
-      { key: 'legalMatters', label: 'Any legal matters to report?', placeholder: 'e.g., No active litigation, standard lease enforcement ongoing' },
-    ],
+      { id: 'marketConditions', label: 'Local market conditions', placeholder: 'e.g., Strong demand, limited supply' },
+      { id: 'competitorActivity', label: 'Competitor activity', placeholder: 'e.g., New build opened nearby at $1,450' },
+      { id: 'demandTrends', label: 'Demand trends', placeholder: 'e.g., Wait list of 15 applicants' },
+    ]
   },
 ]
 
 export function Questionnaire({ reportId, initialData, initialMode, initialFreeform }: Props) {
   const router = useRouter()
-  const [mode, setMode] = useState<'guided' | 'freeform'>(initialMode)
-  const [expandedSections, setExpandedSections] = useState<Set<SectionKey>>(new Set(['occupancy']))
+  const [isPending, startTransition] = useTransition()
+  const [mode, setMode] = useState<InputMode>(initialMode || 'guided')
   const [formData, setFormData] = useState<QuestionnaireData>(initialData || {})
   const [freeformText, setFreeformText] = useState(initialFreeform || '')
-  const [saving, setSaving] = useState(false)
-  const [saved, setSaved] = useState(false)
+  const [activeSection, setActiveSection] = useState(0)
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle')
 
-  const toggleSection = (key: SectionKey) => {
-    setExpandedSections(prev => {
-      const next = new Set(prev)
-      if (next.has(key)) {
-        next.delete(key)
-      } else {
-        next.add(key)
-      }
-      return next
-    })
-  }
-
-  const updateField = (section: SectionKey, field: string, value: string) => {
+  const handleInputChange = (sectionId: string, questionId: string, value: string) => {
     setFormData(prev => ({
       ...prev,
-      [section]: {
-        ...(prev[section] as Record<string, string> || {}),
-        [field]: value,
-      },
+      [sectionId]: {
+        ...(prev[sectionId as keyof QuestionnaireData] || {}),
+        [questionId]: value,
+      }
     }))
-    setSaved(false)
   }
 
   const handleSave = async () => {
-    setSaving(true)
-    try {
-      if (mode === 'guided') {
-        await saveQuestionnaire(reportId, formData)
-      } else {
-        await saveFreeformNarrative(reportId, freeformText)
-      }
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } catch (err) {
-      console.error('Save error:', err)
-      alert('Failed to save')
-    } finally {
-      setSaving(false)
-    }
+    setSaveStatus('saving')
+    startTransition(async () => {
+      await updateQuestionnaire(reportId, formData, mode, freeformText)
+      setSaveStatus('saved')
+      setTimeout(() => setSaveStatus('idle'), 2000)
+    })
   }
 
   const handleGenerateReport = async () => {
-    // Save first
-    await handleSave()
-    // Navigate to generate step (we'll build this on Day 5-6)
-    router.push(`/dashboard/reports/${reportId}/generate`)
+    // Save first, then navigate with auto-start parameter
+    setSaveStatus('saving')
+    await updateQuestionnaire(reportId, formData, mode, freeformText)
+    router.push(`/dashboard/reports/${reportId}/generate?start=true`)
   }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-slate-900">
-          ✍️ Monthly Context & Narrative Input
-        </h2>
-        
-        {/* Mode toggle */}
+      {/* Mode Toggle */}
+      <div className="flex items-center gap-4 mb-6">
+        <h2 className="text-lg font-semibold text-slate-900">Provide Context</h2>
         <div className="flex bg-slate-100 rounded-lg p-1">
           <button
             onClick={() => setMode('guided')}
-            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-              mode === 'guided' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              mode === 'guided' 
+                ? 'bg-white text-slate-900 shadow-sm' 
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            Guided Questions
+            Guided
           </button>
           <button
             onClick={() => setMode('freeform')}
-            className={`px-3 py-1 rounded text-sm font-medium transition-colors ${
-              mode === 'freeform' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500'
+            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+              mode === 'freeform' 
+                ? 'bg-white text-slate-900 shadow-sm' 
+                : 'text-slate-600 hover:text-slate-900'
             }`}
           >
-            Paste Narrative
+            Freeform
           </button>
         </div>
       </div>
 
-      <p className="text-slate-500 text-sm mb-6">
-        {mode === 'guided' 
-          ? 'Answer any questions relevant to this month. All fields are optional — just fill in what applies.'
-          : 'Paste your narrative notes, bullet points, or any context you want included in the report.'
-        }
-      </p>
-
       {mode === 'guided' ? (
-        <div className="space-y-4">
-          {sections.map((section) => (
-            <div key={section.key} className="border border-slate-200 rounded-lg overflow-hidden">
-              {/* Section header */}
+        <>
+          {/* Section Tabs */}
+          <div className="flex flex-wrap gap-2 mb-6">
+            {QUESTIONNAIRE_SECTIONS.map((section, idx) => (
               <button
-                onClick={() => toggleSection(section.key)}
-                className="w-full flex items-center justify-between p-4 bg-slate-50 hover:bg-slate-100 transition-colors"
+                key={section.id}
+                onClick={() => setActiveSection(idx)}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
+                  activeSection === idx
+                    ? 'bg-cyan-100 text-cyan-700'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
               >
-                <span className="flex items-center gap-2 font-medium text-slate-900">
-                  <span>{section.icon}</span>
-                  {section.title}
-                </span>
-                <span className="text-slate-400">
-                  {expandedSections.has(section.key) ? '−' : '+'}
-                </span>
+                {section.title}
               </button>
+            ))}
+          </div>
 
-              {/* Section content */}
-              {expandedSections.has(section.key) && (
-                <div className="p-4 space-y-4">
-                  {section.questions.map((q) => (
-                    <div key={q.key}>
-                      <label className="block text-sm font-medium text-slate-700 mb-1">
-                        {q.label}
-                      </label>
-                      <textarea
-                        value={(formData[section.key] as Record<string, string> || {})[q.key] || ''}
-                        onChange={(e) => updateField(section.key, q.key, e.target.value)}
-                        placeholder={q.placeholder}
-                        rows={2}
-                        className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none text-sm resize-none"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ))}
-        </div>
+          {/* Active Section Questions */}
+          <div className="space-y-4">
+            {QUESTIONNAIRE_SECTIONS[activeSection].questions.map((question) => (
+              <div key={question.id}>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  {question.label}
+                </label>
+                <input
+                  type="text"
+                  placeholder={question.placeholder}
+                  value={
+                    (formData[QUESTIONNAIRE_SECTIONS[activeSection].id as keyof QuestionnaireData] as Record<string, string> | undefined)?.[question.id] || ''
+                  }
+                  onChange={(e) => handleInputChange(
+                    QUESTIONNAIRE_SECTIONS[activeSection].id,
+                    question.id,
+                    e.target.value
+                  )}
+                  className="w-full px-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-colors"
+                />
+              </div>
+            ))}
+          </div>
+
+          {/* Section Navigation */}
+          <div className="flex justify-between mt-6">
+            <button
+              onClick={() => setActiveSection(Math.max(0, activeSection - 1))}
+              disabled={activeSection === 0}
+              className="px-4 py-2 text-slate-600 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ← Previous
+            </button>
+            <button
+              onClick={() => setActiveSection(Math.min(QUESTIONNAIRE_SECTIONS.length - 1, activeSection + 1))}
+              disabled={activeSection === QUESTIONNAIRE_SECTIONS.length - 1}
+              className="px-4 py-2 text-slate-600 hover:text-slate-900 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Next →
+            </button>
+          </div>
+        </>
       ) : (
-        <textarea
-          value={freeformText}
-          onChange={(e) => { setFreeformText(e.target.value); setSaved(false) }}
-          placeholder="Paste your monthly update notes here. Include any information about occupancy, collections, expenses, projects, market conditions, etc. The AI will extract relevant information and structure it into a professional report.
-
-Example:
-- Occupancy up to 94%, signed 8 new leases
-- Collections strong at 98%, one eviction in progress
-- Completed pool renovation, residents very happy
-- Market remains competitive, holding rents steady
-- No major risks to report"
-          rows={16}
-          className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none resize-none"
-        />
+        /* Freeform Mode */
+        <div>
+          <p className="text-sm text-slate-500 mb-3">
+            Write anything you want the AI to know about this month&apos;s performance. 
+            Be as detailed or brief as you like.
+          </p>
+          <textarea
+            value={freeformText}
+            onChange={(e) => setFreeformText(e.target.value)}
+            placeholder="e.g., Strong month overall. Occupancy improved to 95.2% with 14 new move-ins. Collections at 98.5%. Completed pool renovation under budget. One maintenance tech resigned, currently interviewing replacements. Market remains competitive with the new build at Oakwood charging $50 less than our asking rents..."
+            rows={12}
+            className="w-full px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-colors resize-none"
+          />
+        </div>
       )}
 
-      {/* Action buttons */}
-      <div className="flex items-center justify-between mt-6 pt-6 border-t border-slate-200">
+      {/* Action Buttons */}
+      <div className="flex items-center justify-between mt-8 pt-6 border-t border-slate-200">
         <button
           onClick={handleSave}
-          disabled={saving}
-          className="px-4 py-2 text-slate-600 hover:text-slate-900 disabled:opacity-50"
+          disabled={isPending}
+          className="px-4 py-2 text-slate-600 hover:text-slate-900 font-medium disabled:opacity-50"
         >
-          {saving ? 'Saving...' : saved ? '✓ Saved' : 'Save Draft'}
+          {saveStatus === 'saving' ? 'Saving...' : saveStatus === 'saved' ? '✓ Saved' : 'Save Draft'}
         </button>
-        
+
         <button
           onClick={handleGenerateReport}
-          className="px-6 py-3 bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700"
+          disabled={isPending}
+          className="px-6 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 font-medium transition-all shadow-md disabled:opacity-50"
         >
           Generate Report →
         </button>

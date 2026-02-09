@@ -1,5 +1,7 @@
 'use server'
 
+import { analyzeFinancials, formatAnalysisForNarrative, AnalyzedFinancials } from '@/lib/financial-analysis'
+import { calculateKPIs } from '@/lib/kpi-calculator'
 import { auth } from '@clerk/nextjs/server'
 import { supabase } from '@/lib/supabase'
 import { generateInstitutionalReport, PropertyContext, ReportContext } from '@/lib/claude'
@@ -21,6 +23,8 @@ type ReportFile = {
   file_name: string
   file_type: string
 }
+
+type CalculatedKPIs = ReturnType<typeof calculateKPIs>
 
 /**
  * Generate institutional-quality AI narrative for a report
@@ -86,6 +90,50 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       }
     }
 
+    // === STEP 2: ANALYZE FINANCIALS ===
+    let analyzedFinancials: AnalyzedFinancials | null = null
+    let analysisContext = ''
+    
+    if (financialData) {
+      console.log('Analyzing financials with Claude...')
+      
+      try {
+        analyzedFinancials = await analyzeFinancials(financialData, {
+          name: report.property?.name || 'Property',
+          units: report.property?.units,
+          budgetNOI: extractBudgetValue(report.questionnaire, 'budgetNOI'),
+          targetOccupancy: extractBudgetValue(report.questionnaire, 'targetOccupancy'),
+        })
+        
+        analysisContext = formatAnalysisForNarrative(analyzedFinancials)
+        
+        console.log('Financial analysis complete:', {
+          noiMargin: analyzedFinancials.metrics.noiMargin,
+          confidence: analyzedFinancials.verification.confidence,
+          mathVerified: analyzedFinancials.verification.mathVerified,
+        })
+      } catch (analysisError) {
+        console.warn('Financial analysis failed:', analysisError)
+      }
+    }
+
+    // === STEP 3: CALCULATE KPIS ===
+    let calculatedKPIs: CalculatedKPIs | null = null
+    
+    if (financialData && analyzedFinancials) {
+      calculatedKPIs = calculateKPIs(
+        financialData,
+        analyzedFinancials,
+        report.questionnaire as Record<string, Record<string, string>> | undefined
+      )
+      console.log(
+        'KPIs calculated:',
+        Object.keys(calculatedKPIs).filter(
+          (k) => calculatedKPIs![k as keyof CalculatedKPIs] !== null
+        )
+      )
+    }
+
     // 4. Build context objects for Claude
     const propertyContext: PropertyContext = {
       name: report.property?.name || 'Unknown Property',
@@ -95,9 +143,10 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       units: report.property?.units,
     }
 
-    // Build enhanced context with financial data
+    // Build enhanced context with financial data + analysis
     const enhancedFreeformNarrative = buildEnhancedContext(
       financialContext,
+      analysisContext,
       report.freeform_narrative
     )
 
@@ -137,12 +186,24 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
 
     // Save structured sections if available
     if (result.structuredSections) {
-      updateData.content = result.structuredSections
+      const contentWithKPIs = {
+        ...result.structuredSections,
+        calculatedKPIs: calculatedKPIs,
+        analysisMetadata: analyzedFinancials ? {
+          confidence: analyzedFinancials.verification.confidence,
+          mathVerified: analyzedFinancials.verification.mathVerified,
+          analyzedAt: new Date().toISOString(),
+        } : null,
+      }
+      updateData.content = contentWithKPIs
     }
 
     // Save financial data if we parsed it
     if (financialData) {
-      updateData.financial_data = financialData
+      updateData.financial_data = {
+        ...financialData,
+        analysis: analyzedFinancials,
+      }
     }
 
     await supabase
@@ -175,16 +236,43 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
 }
 
 /**
- * Build enhanced context by combining financial data with freeform narrative
+ * Extract budget values from questionnaire
+ */
+function extractBudgetValue(
+  questionnaire: Record<string, unknown> | null,
+  field: string
+): number | undefined {
+  if (!questionnaire) return undefined
+  
+  const sections = ['expenses', 'revenue', 'financial']
+  
+  for (const section of sections) {
+    const sectionData = questionnaire[section] as Record<string, string> | undefined
+    if (sectionData?.[field]) {
+      const value = parseFloat(sectionData[field].replace(/[^0-9.-]/g, ''))
+      if (!isNaN(value)) return value
+    }
+  }
+  
+  return undefined
+}
+
+/**
+ * Build enhanced context by combining financial data, analysis, and freeform narrative
  */
 function buildEnhancedContext(
   financialContext: string,
+  analysisContext: string,
   freeformNarrative: string | null
 ): string {
   const parts: string[] = []
   
   if (financialContext) {
     parts.push(financialContext)
+  }
+  
+  if (analysisContext) {
+    parts.push('\n' + analysisContext)
   }
   
   if (freeformNarrative) {
@@ -204,7 +292,6 @@ export async function regenerateReport(reportId: string): Promise<GenerateReport
     return { success: false, error: 'Unauthorized' }
   }
 
-  // Reset status and clear old narrative
   await supabase
     .from('reports')
     .update({ 
@@ -216,7 +303,6 @@ export async function regenerateReport(reportId: string): Promise<GenerateReport
     .eq('id', reportId)
     .eq('user_id', userId)
 
-  // Generate fresh
   return generateReport(reportId)
 }
 
@@ -263,7 +349,6 @@ export async function saveSection(
   }
 
   try {
-    // Fetch current report
     const { data: report, error: fetchError } = await supabase
       .from('reports')
       .select('content, narrative')
@@ -275,7 +360,6 @@ export async function saveSection(
       return { success: false, error: 'Report not found' }
     }
 
-    // Update the specific section in content
     const currentContent = (report.content as Record<string, unknown>) || { sections: {} }
     const sections = (currentContent.sections as Record<string, unknown>) || {}
     
@@ -288,7 +372,6 @@ export async function saveSection(
       order: sectionDef?.order || 99,
     }
 
-    // Also update the full narrative to keep in sync
     const updatedNarrative = rebuildNarrativeFromSections(sections)
 
     const { error: updateError } = await supabase
@@ -327,7 +410,6 @@ export async function regenerateSection(
   }
 
   try {
-    // Fetch full report context
     const { data: report, error: fetchError } = await supabase
       .from('reports')
       .select(`
@@ -347,7 +429,6 @@ export async function regenerateSection(
       return { success: false, error: 'Invalid section' }
     }
 
-    // Build a focused prompt for just this section
     const sectionContent = await generateSingleSection(
       sectionDef,
       {
@@ -368,7 +449,6 @@ export async function regenerateSection(
       return { success: false, error: 'Failed to generate section' }
     }
 
-    // Save the regenerated section
     const saveResult = await saveSection(reportId, sectionId, sectionContent)
     
     if (!saveResult.success) {
