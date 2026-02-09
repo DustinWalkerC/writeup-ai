@@ -4,12 +4,25 @@ import { useState, useEffect, useTransition } from 'react'
 import { LogoUploader } from '@/components/logo-uploader'
 import { ColorPicker } from '@/components/color-picker'
 import { generateColorPalette, getContrastColor } from '@/lib/branding'
-import { UserSettings } from '@/lib/supabase'
 import { 
   getUserSettings, 
   saveUserSettings, 
   uploadCompanyLogo 
 } from '@/app/actions/settings'
+
+// Define type locally to match what the server action returns
+type UserSettings = {
+  id: string
+  user_id: string
+  company_name: string | null
+  company_logo_url: string | null
+  accent_color: string
+  secondary_color: string
+  ai_tone: string
+  custom_disclaimer: string | null
+  created_at?: string
+  updated_at?: string
+}
 
 export default function SettingsPage() {
   const [settings, setSettings] = useState<UserSettings | null>(null)

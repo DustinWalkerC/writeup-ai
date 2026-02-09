@@ -2,6 +2,7 @@ import { getReport } from '@/app/actions/reports'
 import { redirect } from 'next/navigation'
 import { ReportViewer } from './report-viewer'
 import { getUserSettings } from '@/app/actions/settings'
+import { UserSettings } from '@/lib/supabase'
 
 export default async function ReportPage({ 
   params 
@@ -25,14 +26,13 @@ export default async function ReportPage({
 
   // Status is 'complete' - show the report
   const userSettings = await getUserSettings()
-  // Ensure questionnaire is a non-null record for the viewer
-  const safeReport = { ...report, questionnaire: report.questionnaire ?? {} } as any
 
   return (
     <ReportViewer 
-      report={safeReport}
+      report={report as any}
       reportId={id}
-      userSettings={userSettings}
+      userSettings={userSettings as UserSettings | null}
     />
   )
 }
+

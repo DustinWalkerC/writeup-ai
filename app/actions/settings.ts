@@ -1,9 +1,27 @@
 'use server'
 
 import { auth } from '@clerk/nextjs/server'
-import { supabase } from '@/lib/supabase'
+import { createClient } from '@supabase/supabase-js'
 import { revalidatePath } from 'next/cache'
-import { UserSettings } from '@/lib/supabase'
+
+// Create Supabase client inline to avoid importing client-side module
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+const supabase = createClient(supabaseUrl, supabaseAnonKey)
+
+// Define UserSettings type inline to avoid importing from client module
+type UserSettings = {
+  id: string
+  user_id: string
+  company_name: string | null
+  company_logo_url: string | null
+  accent_color: string
+  secondary_color: string
+  ai_tone: string
+  custom_disclaimer: string | null
+  created_at?: string
+  updated_at?: string
+}
 
 /**
  * Get user settings
