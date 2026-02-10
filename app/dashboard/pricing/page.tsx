@@ -12,8 +12,6 @@ const HOURS_SAVED: Record<PlanTier, number> = {
   institutional: 7,   // Custom templates, API, full automation
 }
 
-const HOURLY_RATE = 48 // ~$100k salary equivalent
-
 export default function PricingPage() {
   const router = useRouter()
   const { isSignedIn } = useAuth()
@@ -59,9 +57,6 @@ export default function PricingPage() {
 
   // Savings calculations
   const hoursSavedPerMonth = HOURS_SAVED[selectedTier] * propertyCount
-  const laborSavedPerMonth = hoursSavedPerMonth * HOURLY_RATE
-  const netSavingsPerMonth = laborSavedPerMonth - totalMonthlyCost
-  const roi = totalMonthlyCost > 0 ? Math.round(laborSavedPerMonth / totalMonthlyCost) : 0
 
   const formatCurrency = (n: number) =>
     n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -301,102 +296,77 @@ export default function PricingPage() {
           </p>
         </div>
 
-        {/* Right: ROI Calculator */}
+        {/* Right: Hours Reclaimed */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6">
           <h3 className="text-lg font-bold text-slate-900 mb-1">
-            Your Return on Investment
+            Hours Reclaimed Every Month
           </h3>
           <p className="text-sm text-slate-500 mb-5">
-            Based on {propertyCount} properties on the {PLANS[selectedTier].name} plan
+            Time you get back with {propertyCount} properties on {PLANS[selectedTier].name}
           </p>
 
-          {/* ROI Highlight */}
-          <div className="bg-gradient-to-br from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-5 mb-5">
-            <div className="text-center">
-              <div className="text-4xl font-bold text-emerald-700">{roi}x</div>
-              <div className="text-sm font-medium text-emerald-600 mt-1">return on investment</div>
+          {/* Big number */}
+          <div className="bg-gradient-to-br from-cyan-50 to-teal-50 border border-cyan-200 rounded-xl p-6 mb-6 text-center">
+            <div className="text-5xl font-bold text-slate-900">
+              {hoursSavedPerMonth.toFixed(0)}
+            </div>
+            <div className="text-sm font-medium text-cyan-700 mt-1">
+              hours back every month
+            </div>
+            <div className="text-xs text-slate-500 mt-2">
+              {HOURS_SAVED[selectedTier]} hrs saved per property × {propertyCount} properties
             </div>
           </div>
 
-          {/* Breakdown */}
-          <div className="space-y-4">
-            {/* Time saved */}
+          {/* What you get back */}
+          <div className="space-y-3">
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <div className="w-8 h-8 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div>
-                <div className="text-lg font-bold text-slate-900">
-                  {hoursSavedPerMonth.toFixed(0)} hours saved
-                </div>
-                <div className="text-sm text-slate-500">
-                  per month · {HOURS_SAVED[selectedTier]} hrs/property × {propertyCount} properties
-                </div>
+                <div className="text-sm font-medium text-slate-900">Stop compiling reports manually</div>
+                <div className="text-xs text-slate-500">No more copy-pasting from T-12s and rent rolls into Word docs</div>
               </div>
             </div>
 
-            {/* Labor cost saved */}
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-emerald-50 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+              <div className="w-8 h-8 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div>
-                <div className="text-lg font-bold text-slate-900">
-                  {formatCurrency(laborSavedPerMonth)} labor saved
-                </div>
-                <div className="text-sm text-slate-500">
-                  per month · valued at $48/hr (avg. asset manager rate)
-                </div>
+                <div className="text-sm font-medium text-slate-900">Focus on investor relations</div>
+                <div className="text-xs text-slate-500">Spend time on strategy and LP communication, not formatting</div>
               </div>
             </div>
 
-            {/* Software cost */}
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-slate-100 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20 12H4" />
+              <div className="w-8 h-8 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div>
-                <div className="text-lg font-bold text-slate-900">
-                  {formatCurrency(totalMonthlyCost)} software cost
-                </div>
-                <div className="text-sm text-slate-500">
-                  per month · {PLANS[selectedTier].name} × {propertyCount} properties
-                </div>
+                <div className="text-sm font-medium text-slate-900">Consistent, professional output</div>
+                <div className="text-xs text-slate-500">Every report follows the same institutional-quality standard</div>
               </div>
             </div>
 
-            {/* Divider */}
-            <div className="border-t border-slate-200" />
-
-            {/* Net savings */}
             <div className="flex items-start gap-3">
-              <div className="w-9 h-9 rounded-lg bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                <svg className="w-5 h-5 text-emerald-700" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M5 13l4 4L19 7" />
+              <div className="w-8 h-8 rounded-lg bg-cyan-50 flex items-center justify-center flex-shrink-0">
+                <svg className="w-4 h-4 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </div>
               <div>
-                <div className="text-xl font-bold text-emerald-700">
-                  {formatCurrency(netSavingsPerMonth)} net savings
-                </div>
-                <div className="text-sm text-slate-500">
-                  per month after software cost
-                </div>
+                <div className="text-sm font-medium text-slate-900">Scale without adding headcount</div>
+                <div className="text-xs text-slate-500">Grow your portfolio without proportionally growing your reporting burden</div>
               </div>
             </div>
-          </div>
-
-          {/* Bottom note */}
-          <div className="mt-5 p-3 bg-slate-50 rounded-lg">
-            <p className="text-xs text-slate-500 text-center">
-              Estimates based on industry averages: ~4 hours to manually compile an investor report vs. ~{Math.round(60 - (HOURS_SAVED[selectedTier] / propertyCount * 60))} minutes with writeup-ai on {PLANS[selectedTier].name}
-            </p>
           </div>
         </div>
       </div>
