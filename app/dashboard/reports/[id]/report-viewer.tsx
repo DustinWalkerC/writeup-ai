@@ -17,6 +17,21 @@ import {
   generateFilename,
 } from '@/lib/export-utils'
 
+interface GeneratedSection {
+  id: string
+  title: string
+  content: string
+  metrics?: Array<{
+    label: string
+    value: string
+    change?: string
+    changeDirection?: string
+    vsbudget?: string
+  }>
+  included: boolean
+  skipReason: string | null
+}
+
 type Props = {
   reportId: string
   report: {
@@ -25,6 +40,7 @@ type Props = {
     year: number
     narrative: string | null
     content: StructuredContent | Record<string, unknown> | null
+    generated_sections?: GeneratedSection[] | null
     questionnaire: Record<string, unknown>
     template_version: string
     updated_at: string
@@ -39,7 +55,11 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('formatted')
   const [regeneratingSection, setRegeneratingSection] = useState<string | null>(null)
   const [sections, setSections] = useState(() =>
-    parseStructuredContent(report.content as StructuredContent, report.narrative)
+    parseStructuredContent(
+      report.content as StructuredContent,
+      report.narrative,
+      report.generated_sections
+    )
   )
   const [isExporting, setIsExporting] = useState(false)
   const [exportStatus, setExportStatus] = useState<string | null>(null)
@@ -48,14 +68,35 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
 
   function parseStructuredContent(
     content: StructuredContent | null,
-    fallbackNarrative: string | null
+    fallbackNarrative: string | null,
+    generatedSections?: GeneratedSection[] | null
   ): Record<string, { title: string; content: string; order: number }> {
+    // Priority 1: generated_sections from the new Day 16 pipeline (array format)
+    if (generatedSections && Array.isArray(generatedSections) && generatedSections.length > 0) {
+      const result: Record<string, { title: string; content: string; order: number }> = {}
+      generatedSections
+        .filter(s => s.included)
+        .forEach((s, index) => {
+          const def = REPORT_SECTIONS.find(rs => rs.id === s.id)
+          result[s.id] = {
+            title: s.title,
+            content: s.content,
+            order: def?.order || index + 1,
+          }
+        })
+      return result
+    }
+
+    // Priority 2: content.sections from legacy pipeline (object format)
     if (content?.sections && Object.keys(content.sections).length > 0) {
       return content.sections
     }
+
+    // Priority 3: parse raw narrative string into sections
     if (fallbackNarrative) {
       return parseNarrativeIntoSections(fallbackNarrative)
     }
+
     return {}
   }
 
@@ -215,21 +256,21 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       id: 'pdf',
       label: 'Download PDF',
       description: 'High-quality PDF for printing or sharing',
-      icon: '📄',
+      icon: 'pdf',
       onClick: handleExportPDF,
     },
     {
       id: 'html',
       label: 'Download HTML',
       description: 'Standalone web page file',
-      icon: '🌐',
+      icon: 'html',
       onClick: handleExportHTML,
     },
     {
       id: 'email',
       label: 'Copy for Email',
       description: 'Paste directly into Gmail, Outlook, etc.',
-      icon: '📧',
+      icon: 'email',
       onClick: handleCopyForEmail,
     },
   ]
@@ -341,4 +382,3 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     </div>
   )
 }
-

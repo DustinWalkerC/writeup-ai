@@ -4,7 +4,8 @@ import { auth } from "@clerk/nextjs/server";
 import { supabase } from "@/lib/supabase";
 import { revalidatePath } from "next/cache";
 
-// Add this helper function at the top
+const FREE_PROPERTY_LIMIT = 50; // Free allowance for building/testing
+
 async function checkPropertySlots(
   userId: string
 ): Promise<{ canAdd: boolean; used: number; total: number }> {
@@ -16,7 +17,6 @@ async function checkPropertySlots(
     .single();
 
   // If the subscription row doesn't exist, treat as no slots.
-  // (PGRST116 is "no rows" for .single())
   if (subError && subError.code !== "PGRST116") {
     throw subError;
   }
@@ -32,11 +32,13 @@ async function checkPropertySlots(
   }
 
   const used = count || 0;
-  const total = subscription?.property_slots || 0;
-  const isActive = subscription?.status === "active";
+  const hasSubscription = subscription?.status === "active";
+  const total = hasSubscription
+    ? subscription?.property_slots || 0
+    : FREE_PROPERTY_LIMIT;
 
   return {
-    canAdd: isActive && used < total,
+    canAdd: used < total,
     used,
     total,
   };
@@ -64,9 +66,7 @@ export async function createProperty(formData: FormData) {
   const slots = await checkPropertySlots(userId);
   if (!slots.canAdd) {
     throw new Error(
-      slots.total === 0
-        ? "Please subscribe to a plan to add properties"
-        : `You've used all ${slots.total} property slots. Please upgrade to add more.`
+      `You've used all ${slots.total} property slots. Please upgrade your plan to add more.`
     );
   }
 
@@ -85,9 +85,37 @@ export async function createProperty(formData: FormData) {
       city: city || null,
       state: state || null,
       units: units ? parseInt(units) : null,
-      locked: true, // Lock the property name (requires these columns to exist)
-      locked_at: new Date().toISOString(),
     })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  revalidatePath("/dashboard/properties");
+  return data;
+}
+
+export async function updateProperty(id: string, formData: FormData) {
+  const { userId } = await auth();
+  if (!userId) throw new Error("Unauthorized");
+
+  const name = formData.get("name") as string;
+  const address = formData.get("address") as string;
+  const city = formData.get("city") as string;
+  const state = formData.get("state") as string;
+  const units = formData.get("units") as string;
+
+  const { data, error } = await supabase
+    .from("properties")
+    .update({
+      name,
+      address: address || null,
+      city: city || null,
+      state: state || null,
+      units: units ? parseInt(units) : null,
+    })
+    .eq("id", id)
+    .eq("user_id", userId)
     .select()
     .single();
 
@@ -111,3 +139,4 @@ export async function deleteProperty(id: string) {
 
   revalidatePath("/dashboard/properties");
 }
+

@@ -5,14 +5,14 @@ import { Report } from '@/lib/supabase'
 import { deleteReport } from '@/app/actions/reports'
 import { useState } from 'react'
 
-const statusColors = {
-  draft: 'bg-yellow-100 text-yellow-800',
-  generating: 'bg-blue-100 text-blue-800',
-  complete: 'bg-green-100 text-green-800',
-  error: 'bg-red-100 text-red-800',
+const statusColors: Record<string, string> = {
+  draft: 'bg-amber-50 text-amber-700 border border-amber-200',
+  generating: 'bg-cyan-50 text-cyan-700 border border-cyan-200',
+  complete: 'bg-green-50 text-green-700 border border-green-200',
+  error: 'bg-red-50 text-red-700 border border-red-200',
 }
 
-const statusLabels = {
+const statusLabels: Record<string, string> = {
   draft: 'Draft',
   generating: 'Generating...',
   complete: 'Complete',
@@ -36,11 +36,11 @@ export function ReportCard({ report }: { report: Report & { property?: { name: s
   }
 
   return (
-    <div className="bg-white rounded-lg border border-slate-200 p-6 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-md transition-shadow">
       {/* Status badge */}
       <div className="flex items-center justify-between mb-3">
-        <span className={`px-2 py-1 rounded-full text-xs font-medium ${statusColors[report.status]}`}>
-          {statusLabels[report.status]}
+        <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${statusColors[report.status] || statusColors.draft}`}>
+          {statusLabels[report.status] || 'Draft'}
         </span>
         <span className="text-sm text-slate-400">
           {new Date(report.created_at).toLocaleDateString()}
@@ -54,26 +54,26 @@ export function ReportCard({ report }: { report: Report & { property?: { name: s
 
       {/* Period */}
       <p className="text-slate-500 text-sm mb-4">
-        📅 {report.month} {report.year}
+        {report.month} {report.year}
       </p>
 
       {/* Actions */}
       <div className="flex gap-2 pt-4 border-t border-slate-100">
-<Link
-  href={
-  report.status === 'draft' 
-    ? `/dashboard/reports/${report.id}/edit`
-    : `/dashboard/reports/${report.id}`
-}
-  className="flex-1 text-center px-3 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700"
->
-  {report.status === 'draft' ? 'Continue' : 'View'}
-</Link>
+        <Link
+          href={
+            report.status === 'draft'
+              ? `/dashboard/reports/${report.id}/edit`
+              : `/dashboard/reports/${report.id}`
+          }
+          className="flex-1 text-center px-3 py-2 bg-gradient-to-r from-cyan-600 to-teal-600 text-white text-sm font-medium rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all shadow-sm"
+        >
+          {report.status === 'draft' ? 'Continue' : 'View'}
+        </Link>
 
         <button
           onClick={handleDelete}
           disabled={isDeleting}
-          className="px-3 py-2 text-red-600 text-sm rounded-lg hover:bg-red-50 disabled:opacity-50"
+          className="px-3 py-2 text-red-600 text-sm rounded-lg hover:bg-red-50 disabled:opacity-50 transition-colors"
         >
           {isDeleting ? '...' : 'Delete'}
         </button>
@@ -81,5 +81,3 @@ export function ReportCard({ report }: { report: Report & { property?: { name: s
     </div>
   )
 }
-
-

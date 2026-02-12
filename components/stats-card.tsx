@@ -1,54 +1,38 @@
-'use client'
+import { ReactNode } from 'react'
 
-type Props = {
+type StatsCardProps = {
   title: string
-  value: string | number
+  value: number | string
   subtitle?: string
-  icon?: React.ReactNode
-  trend?: {
-    value: number
-    isPositive: boolean
-  }
   accentColor?: string
+  icon?: ReactNode
+  large?: boolean
 }
 
-export function StatsCard({ 
-  title, 
-  value, 
-  subtitle, 
-  icon,
-  trend,
-  accentColor = '#06b6d4'
-}: Props) {
+export function StatsCard({ title, value, subtitle, accentColor, icon, large }: StatsCardProps) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6 hover:shadow-md transition-shadow">
+    <div className="bg-white rounded-xl border border-slate-200 p-5">
       <div className="flex items-start justify-between">
         <div>
           <p className="text-sm font-medium text-slate-500">{title}</p>
-          <p 
-            className="text-3xl font-bold mt-1"
-            style={{ color: accentColor }}
+          <p
+            className={`font-bold text-slate-900 mt-1 ${large ? 'text-4xl' : 'text-2xl'}`}
+            style={accentColor ? { color: accentColor } : undefined}
           >
             {value}
           </p>
           {subtitle && (
-            <p className="text-sm text-slate-400 mt-1">{subtitle}</p>
-          )}
-          {trend && (
-            <div className={`flex items-center gap-1 mt-2 text-sm ${
-              trend.isPositive ? 'text-emerald-600' : 'text-red-500'
-            }`}>
-              <span>{trend.isPositive ? '↑' : '↓'}</span>
-              <span>{Math.abs(trend.value)}% from last month</span>
-            </div>
+            <p className="text-xs text-slate-400 mt-1">{subtitle}</p>
           )}
         </div>
         {icon && (
-          <div 
-            className="p-3 rounded-lg"
-            style={{ backgroundColor: `${accentColor}15` }}
+          <div
+            className="p-2 rounded-lg"
+            style={{ backgroundColor: accentColor ? `${accentColor}15` : '#f1f5f9' }}
           >
-            <div style={{ color: accentColor }}>{icon}</div>
+            <div style={{ color: accentColor || '#64748b' }}>
+              {icon}
+            </div>
           </div>
         )}
       </div>

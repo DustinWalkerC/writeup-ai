@@ -48,7 +48,7 @@ export function ReportCard({ report, onStatusChange }: Props) {
         return 'bg-emerald-50 text-emerald-700 border border-emerald-200'
       case 'sent':
         return 'bg-slate-200 text-slate-600 border border-slate-300'
-      default: // under_review
+      default:
         return 'bg-amber-50 text-amber-700 border border-amber-200'
     }
   }
@@ -191,7 +191,6 @@ export function ReportCard({ report, onStatusChange }: Props) {
               </div>
             </div>
           </div>
-          {/* Timestamp for complete reports */}
           <div className="flex items-center gap-1.5 text-xs text-slate-400 mt-2">
             <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -213,9 +212,22 @@ export function ReportCard({ report, onStatusChange }: Props) {
         </div>
       )}
 
-      {/* Action Button */}
+      {/* Action Buttons */}
       <div className="flex items-center gap-2">
         {getActionButton()}
+
+        {/* Export Button (only for complete reports) */}
+        {report.status === 'complete' && (
+          <Link
+            href={`/dashboard/reports/${report.id}`}
+            className="p-2 border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 hover:text-slate-700 transition-all"
+            title="Export report"
+          >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </Link>
+        )}
       </div>
     </div>
   )

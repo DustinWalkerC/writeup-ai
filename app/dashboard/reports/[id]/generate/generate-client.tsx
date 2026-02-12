@@ -1,276 +1,280 @@
-'use client'
+'use client';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import AIGenerationDisplay from './ai-generation-display';
 
-import { useState, useEffect, useRef } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
-import { generateReport } from '@/app/actions/ai'
-import { AIGenerationDisplay } from './ai-generation-display'
-
-type Props = {
-  reportId: string
-  initialStatus: string
-  propertyName: string
-  month: string
-  year: number
+interface GeneratedSection {
+  id: string; title: string; content: string;
+  metrics: Array<{ label: string; value: string; change?: string; changeDirection?: string; vsbudget?: string }>;
+  included: boolean; skipReason: string | null;
 }
 
-export function GenerateClient({ reportId, initialStatus, propertyName, month, year }: Props) {
-  const router = useRouter()
-  const searchParams = useSearchParams()
-  const [status, setStatus] = useState(initialStatus)
-  const [isGenerating, setIsGenerating] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const hasAutoStarted = useRef(false)
+interface GenerateClientProps {
+  reportId: string; propertyId: string; selectedMonth: number; selectedYear: number;
+  tier: string; distributionStatus: string; distributionNote: string;
+  questionnaireAnswers: Record<string, string>; existingSections: GeneratedSection[];
+  propertyName: string;
+}
 
-  // Check if we should auto-start (coming from edit page with ?start=true)
-  const shouldAutoStart = searchParams.get('start') === 'true'
+export default function GenerateClient({
+  reportId, propertyId, selectedMonth, selectedYear, tier,
+  distributionStatus, distributionNote, questionnaireAnswers,
+  existingSections, propertyName,
+}: GenerateClientProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [status, setStatus] = useState<'idle' | 'generating' | 'completed' | 'error'>(
+    existingSections.length > 0 ? 'completed' : 'idle'
+  );
+  const [streamText, setStreamText] = useState('');
+  const [sections, setSections] = useState<GeneratedSection[]>(existingSections);
+  const [error, setError] = useState<string | null>(null);
+  const [usage, setUsage] = useState<{ inputTokens: number; outputTokens: number } | null>(null);
+  const [regenModal, setRegenModal] = useState<{ sectionId: string; sectionTitle: string } | null>(null);
+  const [regenNotes, setRegenNotes] = useState('');
+  const [regenerating, setRegenerating] = useState(false);
+  const streamRef = useRef('');
+  const hasAutoStarted = useRef(false);
 
-  // Auto-start generation if coming from edit page
+  const monthNames = ['', 'January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+  // Save generated sections and update report status to 'complete'
+  const saveGenerationResults = useCallback(async (generatedSections: GeneratedSection[], tokenUsage?: { inputTokens: number; outputTokens: number }) => {
+    try {
+      await fetch(`/api/reports/${reportId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          generated_sections: generatedSections,
+          status: 'complete',
+          generation_status: 'completed',
+          generation_completed_at: new Date().toISOString(),
+          generation_config: {
+            tier,
+            model: 'claude-sonnet-4-20250514',
+            inputTokens: tokenUsage?.inputTokens || 0,
+            outputTokens: tokenUsage?.outputTokens || 0,
+          },
+        }),
+      });
+    } catch (err) {
+      console.error('Failed to save generation results:', err);
+    }
+  }, [reportId, tier]);
+
+  const handleGenerate = useCallback(async () => {
+    setStatus('generating');
+    setStreamText('');
+    setError(null);
+    streamRef.current = '';
+
+    try {
+      const res = await fetch('/api/reports/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          reportId, propertyId, selectedMonth, selectedYear, tier,
+          distributionStatus, distributionNote, questionnaireAnswers,
+          streaming: true,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || 'Generation failed');
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error('No response stream');
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let finalUsage: { inputTokens: number; outputTokens: number } | null = null;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const jsonStr = line.slice(6);
+          try {
+            const event = JSON.parse(jsonStr);
+            if (event.type === 'text') {
+              streamRef.current += event.text;
+              setStreamText(streamRef.current);
+            } else if (event.type === 'usage') {
+              finalUsage = { inputTokens: event.inputTokens, outputTokens: event.outputTokens };
+              setUsage(finalUsage);
+            } else if (event.type === 'error') {
+              throw new Error(event.message);
+            } else if (event.type === 'done') {
+              const fullText = streamRef.current;
+              let parsedSections: GeneratedSection[] = [];
+              try {
+                let jsonContent = fullText;
+                const match = fullText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+                if (match) jsonContent = match[1];
+                const objMatch = jsonContent.match(/\{[\s\S]*\}/);
+                if (objMatch) jsonContent = objMatch[0];
+                const parsed = JSON.parse(jsonContent);
+                parsedSections = parsed.sections || [];
+              } catch {
+                parsedSections = [{ id: 'executive_summary', title: 'Report', content: fullText, metrics: [], included: true, skipReason: null }];
+              }
+              setSections(parsedSections);
+              setStatus('completed');
+              // Save to database
+              await saveGenerationResults(parsedSections, finalUsage || undefined);
+            }
+          } catch (parseErr) {
+            if (parseErr instanceof Error && parseErr.message !== 'Generation failed') {
+              // Skip unparseable SSE events, but re-throw actual errors
+              if (parseErr.message && !parseErr.message.includes('JSON')) throw parseErr;
+            }
+          }
+        }
+      }
+
+      // If we exited without 'done' event, still try to parse and save
+      if (streamRef.current && status !== 'completed') {
+        let parsedSections: GeneratedSection[] = [];
+        try {
+          let jsonContent = streamRef.current;
+          const match = streamRef.current.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+          if (match) jsonContent = match[1];
+          const objMatch = jsonContent.match(/\{[\s\S]*\}/);
+          if (objMatch) jsonContent = objMatch[0];
+          const parsed = JSON.parse(jsonContent);
+          parsedSections = parsed.sections || [];
+        } catch {
+          parsedSections = [{ id: 'executive_summary', title: 'Report', content: streamRef.current, metrics: [], included: true, skipReason: null }];
+        }
+        setSections(parsedSections);
+        setStatus('completed');
+        await saveGenerationResults(parsedSections, finalUsage || undefined);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Generation failed');
+      setStatus('error');
+    }
+  }, [reportId, propertyId, selectedMonth, selectedYear, tier, distributionStatus, distributionNote, questionnaireAnswers, saveGenerationResults, status]);
+
+  // Auto-start generation when arriving from edit page
   useEffect(() => {
-    if (shouldAutoStart && initialStatus === 'draft' && !hasAutoStarted.current) {
-      hasAutoStarted.current = true
-      handleGenerate()
+    const autoGenerate = searchParams.get('autoGenerate');
+    if (autoGenerate === 'true' && status === 'idle' && !hasAutoStarted.current) {
+      hasAutoStarted.current = true;
+      handleGenerate();
     }
-  }, [shouldAutoStart, initialStatus])
+  }, [searchParams, status, handleGenerate]);
 
-  // If already complete and not showing success, redirect to view
-  useEffect(() => {
-    if (initialStatus === 'complete' && !shouldAutoStart) {
-      router.replace(`/dashboard/reports/${reportId}`)
+  const handleRegenerateSection = useCallback((sectionId: string) => {
+    const section = sections.find(s => s.id === sectionId);
+    if (section) {
+      setRegenModal({ sectionId, sectionTitle: section.title });
+      setRegenNotes('');
     }
-  }, [initialStatus, reportId, router, shouldAutoStart])
+  }, [sections]);
 
-  const handleGenerate = async () => {
-    if (isGenerating) return
-    
-    setIsGenerating(true)
-    setError(null)
-    setStatus('generating')
-
-    const result = await generateReport(reportId)
-
-    setIsGenerating(false)
-
-    if (result.success) {
-      setStatus('complete')
-      // Don't auto-redirect - show success screen
-    } else {
-      setStatus('error')
-      setError(result.error || 'Failed to generate report')
+  const handleSubmitRegenerate = useCallback(async () => {
+    if (!regenModal) return;
+    setRegenerating(true);
+    try {
+      const res = await fetch(`/api/reports/${reportId}/regenerate-section`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sectionId: regenModal.sectionId, userNotes: regenNotes }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setSections(prev => prev.map(s => s.id === regenModal.sectionId ? data.section : s));
+      }
+    } catch (err) {
+      console.error('Regeneration failed:', err);
+    } finally {
+      setRegenerating(false);
+      setRegenModal(null);
     }
-  }
+  }, [reportId, regenModal, regenNotes]);
 
-  // Success state - show after generation completes
-  if (status === 'complete') {
-    return (
-      <div className="max-w-3xl mx-auto">
-        {/* Progress Steps at Top */}
-        <div className="flex items-center gap-4 mb-8 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">✓</span>
-            <span className="text-slate-600">Property & Period</span>
-          </div>
-          <div className="flex-1 h-px bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">✓</span>
-            <span className="text-slate-600">Upload & Context</span>
-          </div>
-          <div className="flex-1 h-px bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">✓</span>
-            <span className="text-slate-600">Generate</span>
-          </div>
-          <div className="flex-1 h-px bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-cyan-500 text-white flex items-center justify-center text-xs">4</span>
-            <span className="font-medium text-slate-900">Review & Export</span>
-          </div>
-        </div>
-
-        {/* Success Card */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center">
-          <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-emerald-100 flex items-center justify-center">
-            <span className="text-emerald-600 text-3xl">✓</span>
-          </div>
-          
-          <h2 className="text-2xl font-semibold text-slate-800 mb-2">Report Generated Successfully</h2>
-          <p className="text-slate-500 mb-1">{propertyName}</p>
-          <p className="text-slate-400 text-sm mb-10">{month} {year} Investor Report</p>
-          
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link
-              href={`/dashboard/reports/${reportId}`}
-              className="w-full sm:w-auto px-8 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 font-medium transition-all shadow-md text-center"
-            >
-              View & Edit Report
-            </Link>
-            <Link
-              href="/dashboard/reports/new"
-              className="w-full sm:w-auto px-8 py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium transition-colors text-center"
-            >
-              Start Another Report
-            </Link>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Generating state
-  if (isGenerating || status === 'generating') {
-    return (
-      <div className="max-w-3xl mx-auto">
-        {/* Progress Steps at Top */}
-        <div className="flex items-center gap-4 mb-8 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">✓</span>
-            <span className="text-slate-600">Property & Period</span>
-          </div>
-          <div className="flex-1 h-px bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">✓</span>
-            <span className="text-slate-600">Upload & Context</span>
-          </div>
-          <div className="flex-1 h-px bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-cyan-500 text-white flex items-center justify-center text-xs">3</span>
-            <span className="font-medium text-slate-900">Generate</span>
-          </div>
-          <div className="flex-1 h-px bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs">4</span>
-            <span className="text-slate-400">Review & Export</span>
-          </div>
-        </div>
-
-        {/* Property Info */}
-        <div className="text-center mb-4">
-          <p className="text-slate-500 text-sm">
-            {propertyName} — {month} {year}
+  return (
+    <div className="max-w-5xl mx-auto py-8 px-4">
+      {/* Header */}
+      <div className="mb-8 flex items-center justify-between">
+        <div>
+          <button onClick={() => router.push(`/dashboard/reports/${reportId}/edit`)}
+            className="text-sm text-slate-500 hover:text-slate-700 mb-2 inline-flex items-center gap-1">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            Back to Edit
+          </button>
+          <h1 className="text-2xl font-bold text-slate-900">{propertyName} — Report Generation</h1>
+          <p className="text-slate-500 mt-1">
+            {monthNames[selectedMonth]} {selectedYear} — {tier.charAt(0).toUpperCase() + tier.slice(1)} tier
           </p>
         </div>
-
-        {/* Generation Display */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-          <AIGenerationDisplay isGenerating={true} />
-        </div>
-      </div>
-    )
-  }
-
-  // Error state
-  if (status === 'error') {
-    return (
-      <div className="max-w-3xl mx-auto">
-        {/* Progress Steps */}
-        <div className="flex items-center gap-4 mb-8 text-sm">
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">✓</span>
-            <span className="text-slate-600">Property & Period</span>
-          </div>
-          <div className="flex-1 h-px bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">✓</span>
-            <span className="text-slate-600">Upload & Context</span>
-          </div>
-          <div className="flex-1 h-px bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-red-500 text-white flex items-center justify-center text-xs">!</span>
-            <span className="font-medium text-red-600">Generate</span>
-          </div>
-          <div className="flex-1 h-px bg-slate-200"></div>
-          <div className="flex items-center gap-2">
-            <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs">4</span>
-            <span className="text-slate-400">Review & Export</span>
-          </div>
-        </div>
-
-        {/* Error Card */}
-        <div className="bg-white rounded-xl border border-red-200 shadow-sm p-12 text-center">
-          <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-red-100 flex items-center justify-center">
-            <span className="text-red-600 text-2xl font-bold">×</span>
-          </div>
-          
-          <h2 className="text-xl font-semibold text-slate-800 mb-2">Generation Failed</h2>
-          <p className="text-red-500 text-sm mb-8 max-w-md mx-auto">{error}</p>
-          
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <button
-              onClick={handleGenerate}
-              className="w-full sm:w-auto px-6 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 font-medium transition-all"
-            >
-              Try Again
+        <div className="flex gap-3">
+          {status === 'completed' && (
+            <>
+              <button onClick={handleGenerate}
+                className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all">
+                Regenerate All
+              </button>
+              <button onClick={() => router.push('/dashboard/reports')}
+                className="px-6 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg text-sm font-medium hover:from-cyan-700 hover:to-teal-700 transition-all shadow-sm">
+                View Reports
+              </button>
+            </>
+          )}
+          {status === 'error' && (
+            <button onClick={handleGenerate}
+              className="px-6 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg text-sm font-medium hover:from-cyan-700 hover:to-teal-700 transition-all shadow-sm">
+              Retry
             </button>
-            <Link
-              href={`/dashboard/reports/${reportId}/edit`}
-              className="w-full sm:w-auto px-6 py-2.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium transition-colors text-center"
-            >
-              Edit Data
-            </Link>
-          </div>
-        </div>
-      </div>
-    )
-  }
-
-  // Ready state (draft) - only shows if user navigates directly to /generate
-  return (
-    <div className="max-w-3xl mx-auto">
-      {/* Progress Steps */}
-      <div className="flex items-center gap-4 mb-8 text-sm">
-        <div className="flex items-center gap-2">
-          <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">✓</span>
-          <span className="text-slate-600">Property & Period</span>
-        </div>
-        <div className="flex-1 h-px bg-slate-200"></div>
-        <div className="flex items-center gap-2">
-          <span className="w-6 h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center text-xs">✓</span>
-          <span className="text-slate-600">Upload & Context</span>
-        </div>
-        <div className="flex-1 h-px bg-slate-200"></div>
-        <div className="flex items-center gap-2">
-          <span className="w-6 h-6 rounded-full bg-cyan-500 text-white flex items-center justify-center text-xs">3</span>
-          <span className="font-medium text-slate-900">Generate</span>
-        </div>
-        <div className="flex-1 h-px bg-slate-200"></div>
-        <div className="flex items-center gap-2">
-          <span className="w-6 h-6 rounded-full bg-slate-200 text-slate-500 flex items-center justify-center text-xs">4</span>
-          <span className="text-slate-400">Review & Export</span>
+          )}
         </div>
       </div>
 
-      {/* Ready Card */}
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-12 text-center">
-        <div className="w-16 h-16 mx-auto mb-6 rounded-full bg-cyan-100 flex items-center justify-center">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-cyan-500 to-teal-500 flex items-center justify-center">
-            <span className="text-white text-sm">▶</span>
+      {/* Main Display */}
+      <AIGenerationDisplay
+        status={status} streamText={streamText} sections={sections}
+        error={error} usage={usage} onRegenerateSection={handleRegenerateSection}
+        tier={tier}
+      />
+
+      {/* Regeneration Modal */}
+      {regenModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6">
+            <h3 className="text-lg font-semibold text-slate-900 mb-2">
+              Regenerate: {regenModal.sectionTitle}
+            </h3>
+            <p className="text-sm text-slate-500 mb-4">
+              Provide feedback or instructions for improving this section.
+            </p>
+            <textarea value={regenNotes} onChange={e => setRegenNotes(e.target.value)}
+              placeholder="e.g., Make this more analytical, add market context, focus on NOI improvement..."
+              rows={4}
+              className="w-full border border-slate-200 rounded-lg px-4 py-3 text-slate-900 text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all placeholder-slate-400 mb-4" />
+            <div className="flex justify-end gap-3">
+              <button onClick={() => setRegenModal(null)} disabled={regenerating}
+                className="px-4 py-2 text-sm text-slate-700 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all">
+                Cancel
+              </button>
+              <button onClick={handleSubmitRegenerate} disabled={regenerating}
+                className="px-4 py-2 text-sm text-white bg-gradient-to-r from-cyan-600 to-teal-600 rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all disabled:opacity-50">
+                {regenerating ? 'Regenerating...' : 'Regenerate Section'}
+              </button>
+            </div>
           </div>
         </div>
-        
-        <h2 className="text-xl font-semibold text-slate-800 mb-2">Ready to Generate</h2>
-        <p className="text-slate-500 mb-1">{propertyName}</p>
-        <p className="text-slate-400 text-sm mb-8">{month} {year}</p>
-        
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-          <button
-            onClick={handleGenerate}
-            disabled={isGenerating}
-            className="w-full sm:w-auto px-8 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 font-medium transition-all shadow-md disabled:opacity-50"
-          >
-            Generate Report
-          </button>
-          <Link
-            href={`/dashboard/reports/${reportId}/edit`}
-            className="w-full sm:w-auto px-6 py-2.5 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 font-medium transition-colors text-center"
-          >
-            Go Back
-          </Link>
-        </div>
-        
-        <p className="text-slate-400 text-xs mt-6">
-          AI will analyze your files and create a professional investor report
-        </p>
-      </div>
+      )}
     </div>
-  )
+  );
 }

@@ -4,7 +4,6 @@ import { analyzeFinancials, formatAnalysisForNarrative, AnalyzedFinancials } fro
 import { calculateKPIs } from '@/lib/kpi-calculator'
 import { auth } from '@clerk/nextjs/server'
 import { supabase } from '@/lib/supabase'
-import { generateInstitutionalReport, PropertyContext, ReportContext } from '@/lib/claude'
 import { revalidatePath } from 'next/cache'
 import { REPORT_SECTIONS } from '@/lib/report-sections'
 import { parseReportFilesWithAI } from './files'
@@ -26,9 +25,27 @@ type ReportFile = {
 
 type CalculatedKPIs = ReturnType<typeof calculateKPIs>
 
+// Define types locally since they were removed from lib/claude.ts
+type PropertyContext = {
+  name: string
+  address?: string | null
+  city?: string | null
+  state?: string | null
+  units?: number | null
+}
+
+type ReportContext = {
+  month: string
+  year: number
+  questionnaire: Record<string, unknown>
+  freeformNarrative: string | null
+  uploadedFiles?: Array<{ name: string; type: string }>
+}
+
 /**
- * Generate institutional-quality AI narrative for a report
- * Now with Claude-powered file parsing for T-12 data
+ * Legacy report generation function.
+ * NOTE: The new Day 16+ pipeline uses /api/reports/generate/route.ts instead.
+ * This is kept for backward compatibility with existing report pages.
  */
 export async function generateReport(reportId: string): Promise<GenerateReportResult> {
   const { userId } = await auth()
@@ -134,7 +151,7 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       )
     }
 
-    // 4. Build context objects for Claude
+    // 4. Build context objects
     const propertyContext: PropertyContext = {
       name: report.property?.name || 'Unknown Property',
       address: report.property?.address,
@@ -143,7 +160,6 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       units: report.property?.units,
     }
 
-    // Build enhanced context with financial data + analysis
     const enhancedFreeformNarrative = buildEnhancedContext(
       financialContext,
       analysisContext,
@@ -161,8 +177,8 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       })),
     }
 
-    // 5. Call Claude to generate institutional-quality narrative
-    const result = await generateInstitutionalReport(propertyContext, reportContext)
+    // 5. Call Claude directly (replaces old generateInstitutionalReport)
+    const result = await generateInstitutionalReportDirect(propertyContext, reportContext)
 
     if (!result.success) {
       await supabase
@@ -177,14 +193,13 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       return { success: false, error: result.error }
     }
 
-    // 6. Save the generated narrative, structured content, and financial data
+    // 6. Save the generated narrative
     const updateData: Record<string, unknown> = {
       narrative: result.narrative,
       status: 'complete',
       updated_at: new Date().toISOString(),
     }
 
-    // Save structured sections if available
     if (result.structuredSections) {
       const contentWithKPIs = {
         ...result.structuredSections,
@@ -198,7 +213,6 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       updateData.content = contentWithKPIs
     }
 
-    // Save financial data if we parsed it
     if (financialData) {
       updateData.financial_data = {
         ...financialData,
@@ -236,6 +250,54 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
 }
 
 /**
+ * Direct Claude call — replaces the old generateInstitutionalReport from lib/claude.ts
+ */
+async function generateInstitutionalReportDirect(
+  property: PropertyContext,
+  context: ReportContext
+): Promise<{ success: boolean; narrative?: string; structuredSections?: Record<string, unknown>; error?: string }> {
+  try {
+    const Anthropic = (await import('@anthropic-ai/sdk')).default
+    const anthropic = new Anthropic()
+
+    const systemPrompt = `You are a senior asset manager at a top-tier multifamily private equity firm.
+Write a comprehensive monthly investor report. Use institutional-quality language.
+Be specific with numbers, concise, and data-driven. No fluff or filler.
+Format with markdown headers (##) for each section.`
+
+    const userPrompt = `Property: ${property.name}
+Location: ${property.city || 'N/A'}, ${property.state || 'N/A'}
+Units: ${property.units || 'N/A'}
+Period: ${context.month} ${context.year}
+
+Context:
+${JSON.stringify(context.questionnaire, null, 2)}
+${context.freeformNarrative ? `\nAdditional context:\n${context.freeformNarrative}` : ''}
+
+Write the full investor report now.`
+
+    const response = await anthropic.messages.create({
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
+      max_tokens: 4000,
+      system: systemPrompt,
+      messages: [{ role: 'user', content: userPrompt }],
+    })
+
+    const textContent = response.content.find(block => block.type === 'text')
+    const narrative = textContent?.type === 'text' ? textContent.text : null
+
+    if (!narrative) {
+      return { success: false, error: 'No content generated' }
+    }
+
+    return { success: true, narrative, structuredSections: {} }
+  } catch (error) {
+    console.error('Claude generation error:', error)
+    return { success: false, error: error instanceof Error ? error.message : 'Generation failed' }
+  }
+}
+
+/**
  * Extract budget values from questionnaire
  */
 function extractBudgetValue(
@@ -258,7 +320,7 @@ function extractBudgetValue(
 }
 
 /**
- * Build enhanced context by combining financial data, analysis, and freeform narrative
+ * Build enhanced context
  */
 function buildEnhancedContext(
   financialContext: string,
@@ -266,20 +328,12 @@ function buildEnhancedContext(
   freeformNarrative: string | null
 ): string {
   const parts: string[] = []
-  
-  if (financialContext) {
-    parts.push(financialContext)
-  }
-  
-  if (analysisContext) {
-    parts.push('\n' + analysisContext)
-  }
-  
+  if (financialContext) parts.push(financialContext)
+  if (analysisContext) parts.push('\n' + analysisContext)
   if (freeformNarrative) {
     parts.push('\n## Additional Notes from Property Manager\n')
     parts.push(freeformNarrative)
   }
-  
   return parts.join('\n')
 }
 
@@ -500,7 +554,7 @@ Write the ${section.title} section now:`
 
   try {
     const response = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
       max_tokens: 1024,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],

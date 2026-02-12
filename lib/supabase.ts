@@ -205,3 +205,10 @@ export type UserSettings = {
   created_at: string
   updated_at: string
 }
+// Service role client for server-side API routes (bypasses RLS)
+export const supabaseAdmin = process.env.SUPABASE_SERVICE_ROLE_KEY
+  ? createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+  : supabase
