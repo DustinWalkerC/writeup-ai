@@ -7,9 +7,9 @@ import { supabase } from '@/lib/supabase'
 import { revalidatePath } from 'next/cache'
 import { REPORT_SECTIONS } from '@/lib/report-sections'
 import { parseReportFilesWithAI } from './files'
-import { 
-  ExtractedFinancialData, 
-  formatFinancialContextForReport 
+import {
+  ExtractedFinancialData,
+  formatFinancialContextForReport
 } from '@/lib/document-intelligence'
 
 export type GenerateReportResult = {
@@ -57,9 +57,9 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
     // 1. Update status to "generating"
     await supabase
       .from('reports')
-      .update({ 
-        status: 'generating', 
-        updated_at: new Date().toISOString() 
+      .update({
+        status: 'generating',
+        updated_at: new Date().toISOString()
       })
       .eq('id', reportId)
       .eq('user_id', userId)
@@ -83,7 +83,7 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
     // 3. === CLAUDE-POWERED FILE PARSING ===
     let financialData: ExtractedFinancialData | null = null
     let financialContext = ''
-    
+
     const reportFiles: ReportFile[] = report.report_files || []
     const hasFinancialFiles = reportFiles.some((file) => {
       const name = file.file_name.toLowerCase()
@@ -93,7 +93,7 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
     if (hasFinancialFiles) {
       console.log('Parsing financial files with Claude...')
       const parseResult = await parseReportFilesWithAI(reportId)
-      
+
       if (parseResult.success && parseResult.data) {
         financialData = parseResult.data
         financialContext = formatFinancialContextForReport(financialData)
@@ -110,10 +110,10 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
     // === STEP 2: ANALYZE FINANCIALS ===
     let analyzedFinancials: AnalyzedFinancials | null = null
     let analysisContext = ''
-    
+
     if (financialData) {
       console.log('Analyzing financials with Claude...')
-      
+
       try {
         analyzedFinancials = await analyzeFinancials(financialData, {
           name: report.property?.name || 'Property',
@@ -121,9 +121,9 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
           budgetNOI: extractBudgetValue(report.questionnaire, 'budgetNOI'),
           targetOccupancy: extractBudgetValue(report.questionnaire, 'targetOccupancy'),
         })
-        
+
         analysisContext = formatAnalysisForNarrative(analyzedFinancials)
-        
+
         console.log('Financial analysis complete:', {
           noiMargin: analyzedFinancials.metrics.noiMargin,
           confidence: analyzedFinancials.verification.confidence,
@@ -136,7 +136,7 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
 
     // === STEP 3: CALCULATE KPIS ===
     let calculatedKPIs: CalculatedKPIs | null = null
-    
+
     if (financialData && analyzedFinancials) {
       calculatedKPIs = calculateKPIs(
         financialData,
@@ -183,9 +183,9 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
     if (!result.success) {
       await supabase
         .from('reports')
-        .update({ 
-          status: 'error', 
-          updated_at: new Date().toISOString() 
+        .update({
+          status: 'error',
+          updated_at: new Date().toISOString()
         })
         .eq('id', reportId)
         .eq('user_id', userId)
@@ -305,9 +305,9 @@ function extractBudgetValue(
   field: string
 ): number | undefined {
   if (!questionnaire) return undefined
-  
+
   const sections = ['expenses', 'revenue', 'financial']
-  
+
   for (const section of sections) {
     const sectionData = questionnaire[section] as Record<string, string> | undefined
     if (sectionData?.[field]) {
@@ -315,7 +315,7 @@ function extractBudgetValue(
       if (!isNaN(value)) return value
     }
   }
-  
+
   return undefined
 }
 
@@ -348,8 +348,8 @@ export async function regenerateReport(reportId: string): Promise<GenerateReport
 
   await supabase
     .from('reports')
-    .update({ 
-      status: 'draft', 
+    .update({
+      status: 'draft',
       narrative: null,
       content: {},
       financial_data: null,
@@ -364,7 +364,7 @@ export async function regenerateReport(reportId: string): Promise<GenerateReport
  * Update just the narrative (for manual edits)
  */
 export async function updateNarrative(
-  reportId: string, 
+  reportId: string,
   narrative: string
 ): Promise<{ success: boolean; error?: string }> {
   const { userId } = await auth()
@@ -374,7 +374,7 @@ export async function updateNarrative(
 
   const { error } = await supabase
     .from('reports')
-    .update({ 
+    .update({
       narrative,
       updated_at: new Date().toISOString(),
     })
@@ -416,9 +416,9 @@ export async function saveSection(
 
     const currentContent = (report.content as Record<string, unknown>) || { sections: {} }
     const sections = (currentContent.sections as Record<string, unknown>) || {}
-    
+
     const sectionDef = REPORT_SECTIONS.find(s => s.id === sectionId)
-    
+
     sections[sectionId] = {
       ...(sections[sectionId] as Record<string, unknown> || {}),
       content,
@@ -456,7 +456,8 @@ export async function saveSection(
  */
 export async function regenerateSection(
   reportId: string,
-  sectionId: string
+  sectionId: string,
+  instructions?: string
 ): Promise<{ success: boolean; content?: string; error?: string }> {
   const { userId } = await auth()
   if (!userId) {
@@ -496,7 +497,8 @@ export async function regenerateSection(
         year: report.year,
         questionnaire: report.questionnaire || {},
         freeformNarrative: report.freeform_narrative,
-      }
+      },
+      instructions
     )
 
     if (!sectionContent) {
@@ -504,7 +506,7 @@ export async function regenerateSection(
     }
 
     const saveResult = await saveSection(reportId, sectionId, sectionContent)
-    
+
     if (!saveResult.success) {
       return { success: false, error: saveResult.error }
     }
@@ -523,7 +525,8 @@ export async function regenerateSection(
 async function generateSingleSection(
   section: typeof REPORT_SECTIONS[0],
   property: { name: string; city?: string | null; state?: string | null; units?: number | null },
-  context: { month: string; year: number; questionnaire: Record<string, unknown>; freeformNarrative: string | null }
+  context: { month: string; year: number; questionnaire: Record<string, unknown>; freeformNarrative: string | null },
+  instructions?: string
 ): Promise<string | null> {
   const Anthropic = (await import('@anthropic-ai/sdk')).default
   const anthropic = new Anthropic()
@@ -549,6 +552,8 @@ Section description: ${section.description}
 Context from asset manager:
 ${JSON.stringify(context.questionnaire, null, 2)}
 ${context.freeformNarrative ? `\nAdditional notes: ${context.freeformNarrative}` : ''}
+
+${instructions ? `\nSpecial instructions: ${instructions}` : ''}
 
 Write the ${section.title} section now:`
 

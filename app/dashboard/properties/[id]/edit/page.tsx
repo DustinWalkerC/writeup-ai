@@ -11,8 +11,6 @@ type Property = {
   city: string | null
   state: string | null
   units: number | null
-
-  // NEW (Day 16)
   investment_strategy?: string | null
   budget_file_name?: string | null
 }
@@ -26,8 +24,8 @@ export default function EditPropertyPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showCsvHelp, setShowCsvHelp] = useState(false)
 
-  // NEW (Day 16)
   const [investmentStrategy, setInvestmentStrategy] = useState('')
   const [budgetFileName, setBudgetFileName] = useState('')
   const [uploadingBudget, setUploadingBudget] = useState(false)
@@ -39,8 +37,6 @@ export default function EditPropertyPage() {
         const data = await res.json()
         if (data.error) throw new Error(data.error)
         setProperty(data)
-
-        // NEW (Day 16)
         setInvestmentStrategy(data.investment_strategy || '')
         setBudgetFileName(data.budget_file_name || '')
       } catch (err: any) {
@@ -52,7 +48,6 @@ export default function EditPropertyPage() {
     fetchProperty()
   }, [propertyId])
 
-  // NEW (Day 16) — budget upload handler
   const handleBudgetUpload = async (file: File) => {
     if (!property) return
     setUploadingBudget(true)
@@ -76,7 +71,6 @@ export default function EditPropertyPage() {
     }
   }
 
-  // NEW (Day 16) — budget delete handler
   const handleBudgetDelete = async () => {
     if (!property) return
     try {
@@ -95,8 +89,6 @@ export default function EditPropertyPage() {
 
     try {
       const formData = new FormData(e.currentTarget)
-
-      // NEW (Day 16) — include investment_strategy in form data
       formData.set('investment_strategy', investmentStrategy)
 
       await updateProperty(propertyId, formData)
@@ -149,140 +141,173 @@ export default function EditPropertyPage() {
       </div>
 
       {/* Form */}
-      <form onSubmit={handleSubmit} className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-6">
         {error && (
           <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
             {error}
           </div>
         )}
 
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Property Name</label>
-          <input
-            name="name"
-            type="text"
-            defaultValue={property.name}
-            required
-            className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-          />
-        </div>
+        {/* Property Details Card */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+          <h3 className="text-lg font-semibold text-slate-900">Property Details</h3>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Address</label>
-          <input
-            name="address"
-            type="text"
-            defaultValue={property.address || ''}
-            className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-          />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">City</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Property Name</label>
             <input
-              name="city"
+              name="name"
               type="text"
-              defaultValue={property.city || ''}
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              defaultValue={property.name}
+              required
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
             />
           </div>
+
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">State</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Address</label>
             <input
-              name="state"
+              name="address"
               type="text"
-              defaultValue={property.state || ''}
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
+              defaultValue={property.address || ''}
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">City</label>
+              <input
+                name="city"
+                type="text"
+                defaultValue={property.city || ''}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-1.5">State</label>
+              <input
+                name="state"
+                type="text"
+                defaultValue={property.state || ''}
+                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
+              />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">Number of Units</label>
+            <input
+              name="units"
+              type="number"
+              defaultValue={property.units || ''}
+              min="1"
+              className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
             />
           </div>
         </div>
 
-        <div>
-          <label className="block text-sm font-medium text-slate-700 mb-1.5">Number of Units</label>
-          <input
-            name="units"
-            type="number"
-            defaultValue={property.units || ''}
-            min="1"
-            className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent"
-          />
-        </div>
+        {/* Investment Context Card */}
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
+          <div>
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Investment Context</h3>
+              <span className="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded-full">Optional</span>
+            </div>
+            <p className="text-sm text-slate-500 mt-1">This information is used automatically in every report generated for this property.</p>
+          </div>
 
-        {/* Investment Strategy (Day 16) */}
-        <div className="space-y-2 pt-2">
-          <label className="block text-sm font-medium text-gray-700">Investment Strategy (optional)</label>
-          <textarea
-            value={investmentStrategy}
-            onChange={e => setInvestmentStrategy(e.target.value)}
-            placeholder="e.g., Renovate 20 units Q1-Q2, target $150 premium. Core-plus hold, 3-year exit."
-            rows={3}
-            className="w-full border border-gray-300 rounded-md px-3 py-2 text-gray-900 text-sm focus:ring-2 focus:ring-blue-500"
-          />
-          <p className="text-xs text-gray-400">Claude uses this context for strategic recommendations in reports.</p>
-        </div>
+          {/* Investment Strategy */}
+          <div>
+            <label className="block text-sm font-medium text-slate-700 mb-1.5">
+              Investment Strategy / Business Plan
+            </label>
+            <textarea
+              value={investmentStrategy}
+              onChange={e => setInvestmentStrategy(e.target.value)}
+              placeholder="e.g., Value-add acquisition targeting 20-unit interior renovation in Q1-Q2 2025. Targeting $150/unit rent premium post-renovation. Core-plus hold strategy with 3-year exit timeline..."
+              rows={4}
+              className="w-full border border-slate-200 rounded-lg px-4 py-3 text-slate-900 text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all placeholder-slate-400"
+            />
+            <p className="text-xs text-slate-400 mt-1">
+              The analysis engine weaves this context into the strategic recommendations of every report.
+            </p>
+          </div>
 
-        {/* Budget Upload (Day 16) */}
-        <div className="space-y-2">
-          <label className="block text-sm font-medium text-gray-700">Annual Budget (optional)</label>
-
-          {budgetFileName ? (
-            <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-md">
-              <svg className="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                <path
-                  fillRule="evenodd"
-                  d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z"
-                  clipRule="evenodd"
-                />
-              </svg>
-              <span className="text-sm text-green-700 flex-1">{budgetFileName}</span>
-
+          {/* Budget Upload */}
+          <div>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="block text-sm font-medium text-slate-700">Annual Budget</label>
               <button
                 type="button"
-                onClick={handleBudgetDelete}
-                className="text-sm text-red-500 hover:text-red-700"
+                onClick={() => setShowCsvHelp(true)}
+                className="text-xs text-cyan-600 hover:text-cyan-700 font-medium transition-colors"
               >
-                Remove
+                How to export as CSV?
               </button>
+            </div>
 
-              <label className="text-sm text-blue-600 hover:text-blue-800 cursor-pointer">
-                Replace
+            {budgetFileName ? (
+              <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+                  <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <span className="text-sm text-green-700 flex-1 truncate">{budgetFileName}</span>
+                <button
+                  type="button"
+                  onClick={handleBudgetDelete}
+                  className="text-sm text-red-500 hover:text-red-700 font-medium transition-colors"
+                >
+                  Remove
+                </button>
+                <label className="text-sm text-cyan-600 hover:text-cyan-700 cursor-pointer font-medium transition-colors">
+                  Replace
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept=".csv"
+                    onChange={e => {
+                      const f = e.target.files?.[0]
+                      if (f) handleBudgetUpload(f)
+                      if (e.target) e.target.value = ''
+                    }}
+                  />
+                </label>
+              </div>
+            ) : (
+              <label className={`flex flex-col items-center justify-center px-4 py-6 border-2 border-dashed rounded-lg cursor-pointer transition-all ${
+                uploadingBudget
+                  ? 'border-slate-200 bg-slate-50'
+                  : 'border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/30'
+              }`}>
+                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-2">
+                  <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
+                  </svg>
+                </div>
+                <p className="text-sm text-slate-600 font-medium">
+                  {uploadingBudget ? 'Uploading...' : 'Upload budget (.csv)'}
+                </p>
+                <p className="text-xs text-slate-400 mt-1">Stored once, reused for all future reports</p>
                 <input
                   type="file"
                   className="hidden"
-                  accept=".xlsx,.xls"
+                  accept=".csv"
+                  disabled={uploadingBudget}
                   onChange={e => {
                     const f = e.target.files?.[0]
                     if (f) handleBudgetUpload(f)
+                    if (e.target) e.target.value = ''
                   }}
                 />
               </label>
-            </div>
-          ) : (
-            <label
-              className={`flex items-center justify-center px-4 py-6 border-2 border-dashed rounded-md cursor-pointer transition ${
-                uploadingBudget ? 'border-gray-200 bg-gray-50' : 'border-gray-300 hover:border-blue-400 hover:bg-blue-50'
-              }`}
-            >
-              <div className="text-center">
-                <p className="text-sm text-gray-600">{uploadingBudget ? 'Uploading...' : 'Click to upload budget (.xlsx)'}</p>
-                <p className="text-xs text-gray-400 mt-1">Stored once, reused for all future reports</p>
-              </div>
-              <input
-                type="file"
-                className="hidden"
-                accept=".xlsx,.xls"
-                disabled={uploadingBudget}
-                onChange={e => {
-                  const f = e.target.files?.[0]
-                  if (f) handleBudgetUpload(f)
-                }}
-              />
-            </label>
-          )}
+            )}
+          </div>
         </div>
 
-        <div className="flex gap-3 pt-4 border-t border-slate-100">
+        {/* Actions */}
+        <div className="flex gap-3">
           <button
             type="submit"
             disabled={isSaving}
@@ -299,6 +324,58 @@ export default function EditPropertyPage() {
           </button>
         </div>
       </form>
+
+      {/* CSV Help Modal */}
+      {showCsvHelp && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-slate-900">How to Export as CSV</h3>
+              <button
+                onClick={() => setShowCsvHelp(false)}
+                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-4 text-sm text-slate-600">
+              <div>
+                <p className="font-medium text-slate-800 mb-1">From Microsoft Excel:</p>
+                <div className="bg-slate-50 rounded-lg p-3 space-y-1.5 text-slate-600">
+                  <p>1. Open your budget file in Excel</p>
+                  <p>2. Click <span className="font-medium text-slate-800">File</span> then <span className="font-medium text-slate-800">Save As</span></p>
+                  <p>3. Choose your save location</p>
+                  <p>4. In the <span className="font-medium text-slate-800">Save as type</span> dropdown, select <span className="font-medium text-slate-800">CSV (Comma delimited) (*.csv)</span></p>
+                  <p>5. Click <span className="font-medium text-slate-800">Save</span></p>
+                </div>
+              </div>
+
+              <div>
+                <p className="font-medium text-slate-800 mb-1">From Google Sheets:</p>
+                <div className="bg-slate-50 rounded-lg p-3 space-y-1.5 text-slate-600">
+                  <p>1. Open your budget in Google Sheets</p>
+                  <p>2. Click <span className="font-medium text-slate-800">File</span> then <span className="font-medium text-slate-800">Download</span></p>
+                  <p>3. Select <span className="font-medium text-slate-800">Comma-separated values (.csv)</span></p>
+                </div>
+              </div>
+
+              <p className="text-xs text-slate-400">
+                CSV files are smaller and faster for our analysis engine to process than Excel files.
+              </p>
+            </div>
+
+            <button
+              onClick={() => setShowCsvHelp(false)}
+              className="w-full mt-5 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg text-sm font-medium hover:from-cyan-700 hover:to-teal-700 transition-all"
+            >
+              Got it
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

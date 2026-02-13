@@ -49,7 +49,7 @@ type Props = {
   userSettings?: UserSettings | null
 }
 
-type ViewMode = 'formatted' | 'sections' | 'preview'
+type ViewMode = 'formatted' | 'sections'
 
 export function ReportViewer({ reportId, report, userSettings }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('formatted')
@@ -71,13 +71,11 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     fallbackNarrative: string | null,
     generatedSections?: GeneratedSection[] | null
   ): Record<string, { title: string; content: string; order: number }> {
-    // Priority 1: generated_sections from the Day 16 pipeline (array format)
     if (generatedSections && Array.isArray(generatedSections) && generatedSections.length > 0) {
       const result: Record<string, { title: string; content: string; order: number }> = {}
       generatedSections
         .filter(s => s.included)
         .forEach((s, index) => {
-          // Try to find a matching REPORT_SECTIONS entry for ordering, fall back to array index
           const def = REPORT_SECTIONS.find(rs => rs.id === s.id)
           result[s.id] = {
             title: s.title,
@@ -88,12 +86,10 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       return result
     }
 
-    // Priority 2: content.sections from legacy pipeline (object format)
     if (content?.sections && Object.keys(content.sections).length > 0) {
       return content.sections
     }
 
-    // Priority 3: parse raw narrative string into sections
     if (fallbackNarrative) {
       return parseNarrativeIntoSections(fallbackNarrative)
     }
@@ -148,10 +144,10 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     }
   }
 
-  const handleRegenerateSection = async (sectionId: string) => {
+  const handleRegenerateSection = async (sectionId: string, instructions?: string) => {
     setRegeneratingSection(sectionId)
     try {
-      const result = await regenerateSection(reportId, sectionId)
+      const result = await regenerateSection(reportId, sectionId, instructions)
       if (result.success && result.content) {
         setSections((prev) => ({
           ...prev,
@@ -165,11 +161,9 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     }
   }
 
-  // Build ordered sections from ACTUAL parsed sections, not just REPORT_SECTIONS
   const orderedSections = useMemo(() => {
     const result: Array<{ id: string; title: string; content: string; order: number; description: string; required: boolean }> = []
 
-    // Add all sections from the parsed state (covers new pipeline IDs)
     for (const [id, section] of Object.entries(sections)) {
       const def = REPORT_SECTIONS.find(rs => rs.id === id)
       result.push({
@@ -182,7 +176,6 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       })
     }
 
-    // For legacy edit view: add any REPORT_SECTIONS that aren't already present
     for (const def of REPORT_SECTIONS) {
       if (!sections[def.id]) {
         result.push({
@@ -298,41 +291,41 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     },
   ]
 
+  const sectionCount = orderedSections.filter(s => s.content).length
+
   return (
-    <div className="bg-white rounded-lg border border-slate-200">
+    <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
       {/* Toolbar */}
-      <div className="flex items-center justify-between p-4 border-b border-slate-200">
+      <div className="flex items-center justify-between p-4 border-b border-slate-200 bg-slate-50/50">
         {/* View Mode Toggle */}
         <div className="flex bg-slate-100 rounded-lg p-1">
           <button
             onClick={() => setViewMode('formatted')}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${
               viewMode === 'formatted'
                 ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-500 hover:text-slate-700'
             }`}
           >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
+            </svg>
             Formatted
           </button>
           <button
             onClick={() => setViewMode('sections')}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
+            className={`inline-flex items-center gap-1.5 px-4 py-2 rounded-md text-sm font-medium transition-all ${
               viewMode === 'sections'
                 ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
+                : 'text-slate-500 hover:text-slate-700'
             }`}
           >
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
+            </svg>
             Edit Sections
-          </button>
-          <button
-            onClick={() => setViewMode('preview')}
-            className={`px-3 py-1.5 rounded text-sm font-medium transition-colors ${
-              viewMode === 'preview'
-                ? 'bg-white text-slate-900 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Raw Text
+            <span className="ml-1 px-1.5 py-0.5 text-xs bg-slate-200 text-slate-600 rounded-full">{sectionCount}</span>
           </button>
         </div>
 
@@ -353,10 +346,10 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         )}
 
         {viewMode === 'sections' && (
-          <div className="space-y-4">
+          <div className="space-y-3">
             {orderedSections
-              .filter((s) => s.content) // Only show sections that have content
-              .map((section) => (
+              .filter((s) => s.content)
+              .map((section, index) => (
                 <SectionEditor
                   key={section.id}
                   sectionId={section.id}
@@ -366,16 +359,9 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                   onSave={handleSaveSection}
                   onRegenerate={handleRegenerateSection}
                   isRegenerating={regeneratingSection === section.id}
+                  animationDelay={index}
                 />
               ))}
-          </div>
-        )}
-
-        {viewMode === 'preview' && (
-          <div className="prose prose-slate max-w-none">
-            <pre className="whitespace-pre-wrap font-mono text-sm bg-slate-50 p-4 rounded-lg">
-              {previewNarrative}
-            </pre>
           </div>
         )}
       </div>
@@ -390,17 +376,28 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       )}
 
       {/* Footer Actions */}
-      <div className="flex items-center justify-between p-4 border-t border-slate-200 bg-slate-50">
+      <div className="flex items-center justify-between p-4 border-t border-slate-200 bg-slate-50/50">
         <Link
           href={`/dashboard/reports/${reportId}/generate`}
-          className="text-slate-600 hover:text-slate-900 text-sm"
+          className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-medium text-white rounded-lg shadow-sm hover:shadow-md transition-all"
+          style={{
+            background: 'linear-gradient(225deg, #0891b2, #14b8a6, #06b6d4, #0d9488, #0891b2)',
+            backgroundSize: '300% 300%',
+            animation: 'gradientShift 5s ease infinite',
+          }}
         >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
+          </svg>
           Regenerate Entire Report
         </Link>
         <Link
           href="/dashboard/reports"
-          className="px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-sm font-medium"
+          className="inline-flex items-center gap-2 px-5 py-2.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-sm font-medium transition-colors shadow-sm"
         >
+          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+          </svg>
           Done
         </Link>
       </div>

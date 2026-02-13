@@ -121,49 +121,40 @@ export default function ReportEditClient({ report, property, existingFiles, tier
         </div>
       </div>
 
-      {/* Stepper — Modern Icon Design */}
+      {/* Stepper */}
       <div className="mb-8">
-        <div className="bg-white rounded-xl border border-slate-200 p-6">
-          <div className="flex items-start">
-            {steps.map((step, i) => (
-              <div key={step.key} className="flex items-start flex-1 last:flex-none">
-                {/* Step indicator */}
-                <div className="flex flex-col items-center w-full">
-                  <div className={`w-11 h-11 rounded-xl flex items-center justify-center transition-all ${
-                    step.done
-                      ? 'bg-green-50 border-2 border-green-400 shadow-sm shadow-green-100'
-                      : step.active
-                      ? 'bg-gradient-to-br from-cyan-500 to-teal-500 shadow-lg shadow-cyan-200/50'
-                      : 'bg-slate-50 border border-slate-200'
-                  }`}>
-                    {step.done ? (
-                      <svg className="w-5 h-5 text-green-500" fill="currentColor" viewBox="0 0 20 20">
-                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                      </svg>
-                    ) : (
-                      <svg className={`w-5 h-5 ${step.active ? 'text-white' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        {step.icon}
-                      </svg>
-                    )}
-                  </div>
-                  <span className={`text-xs font-medium mt-2.5 text-center ${
-                    step.done ? 'text-green-600' :
-                    step.active ? 'text-cyan-600' :
-                    'text-slate-400'
-                  }`}>{step.label}</span>
-                </div>
+        <div className="relative flex items-center justify-between">
+          {/* Connector line — sits behind everything */}
+          <div className="absolute top-[18px] left-[36px] right-[36px] h-[2px] bg-slate-200" />
+          {/* Green progress overlay */}
+          <div className="absolute top-[18px] left-[36px] h-[2px] bg-green-400 transition-all" style={{ width: `${(steps.filter(s => s.done).length / (steps.length - 1)) * (100 - (72 / 8))}%` }} />
 
-                {/* Connector line */}
-                {i < steps.length - 1 && (
-                  <div className="flex-1 min-w-[2rem] max-w-[6rem] pt-5 px-1">
-                    <div className={`h-[2px] rounded-full ${
-                      step.done ? 'bg-green-300' : 'bg-slate-200'
-                    }`} />
-                  </div>
+          {steps.map((step) => (
+            <div key={step.key} className="relative z-10 flex flex-col items-center" style={{ width: '72px' }}>
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center transition-all ${
+                step.done
+                  ? 'bg-green-500 shadow-sm'
+                  : step.active
+                  ? 'bg-gradient-to-br from-cyan-500 to-teal-500 shadow-md shadow-cyan-200/50'
+                  : 'bg-white border-2 border-slate-200'
+              }`}>
+                {step.done ? (
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                  </svg>
+                ) : (
+                  <svg className={`w-4 h-4 ${step.active ? 'text-white' : 'text-slate-400'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    {step.icon}
+                  </svg>
                 )}
               </div>
-            ))}
-          </div>
+              <span className={`text-[11px] font-medium mt-2 text-center whitespace-nowrap ${
+                step.done ? 'text-green-600' :
+                step.active ? 'text-cyan-600' :
+                'text-slate-400'
+              }`}>{step.label}</span>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -360,4 +351,3 @@ export default function ReportEditClient({ report, property, existingFiles, tier
     </div>
   );
 }
-

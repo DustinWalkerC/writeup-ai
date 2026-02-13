@@ -2,6 +2,7 @@ import { auth } from '@clerk/nextjs/server';
 import { supabaseAdmin as supabase } from '@/lib/supabase';
 import { NextRequest, NextResponse } from 'next/server';
 
+// GET - Fetch a single property
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -10,13 +11,18 @@ export async function GET(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
 
-  const { data: report, error } = await supabase
-    .from('reports').select('*, properties(*)').eq('id', id).eq('user_id', userId).single();
+  const { data: property, error } = await supabase
+    .from('properties')
+    .select('*')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .single();
 
-  if (error || !report) return NextResponse.json({ error: 'Report not found' }, { status: 404 });
-  return NextResponse.json(report);
+  if (error || !property) return NextResponse.json({ error: 'Property not found' }, { status: 404 });
+  return NextResponse.json(property);
 }
 
+// PATCH - Update a property
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -28,9 +34,8 @@ export async function PATCH(
   try {
     const body = await request.json();
     const allowedFields = [
-      'name', 'status', 'questionnaire_answers', 'distribution_status',
-      'distribution_note', 'selected_month', 'selected_year',
-      'generated_sections', 'raw_analysis', 'generation_status',
+      'name', 'address', 'city', 'state', 'units',
+      'investment_strategy', 'budget_file_path', 'budget_file_name', 'budget_uploaded_at',
     ];
 
     const updateData: Record<string, unknown> = {};
@@ -43,15 +48,24 @@ export async function PATCH(
     }
 
     const { data, error } = await supabase
-      .from('reports').update(updateData).eq('id', id).eq('user_id', userId).select().single();
+      .from('properties')
+      .update(updateData)
+      .eq('id', id)
+      .eq('user_id', userId)
+      .select()
+      .single();
 
     if (error) throw error;
-    return NextResponse.json({ success: true, report: data });
+    return NextResponse.json({ success: true, property: data });
   } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : 'Update failed' }, { status: 500 });
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : 'Update failed' },
+      { status: 500 }
+    );
   }
 }
 
+// DELETE - Delete a property
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -60,16 +74,26 @@ export async function DELETE(
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   const { id } = await params;
 
-  const { data: files } = await supabase
-    .from('report_files').select('file_path').eq('report_id', id).eq('user_id', userId);
+  // Delete budget file from storage if exists
+  const { data: property } = await supabase
+    .from('properties')
+    .select('budget_file_path')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .single();
 
-  if (files && files.length > 0) {
-    await supabase.storage.from('report-files').remove(files.map(f => f.file_path));
+  if (property?.budget_file_path) {
+    await supabase.storage.from('report-files').remove([property.budget_file_path]);
   }
 
-  const { error } = await supabase.from('reports').delete().eq('id', id).eq('user_id', userId);
+  const { error } = await supabase
+    .from('properties')
+    .delete()
+    .eq('id', id)
+    .eq('user_id', userId);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }
+
 

@@ -75,6 +75,7 @@ export async function createProperty(formData: FormData) {
   const city = formData.get("city") as string;
   const state = formData.get("state") as string;
   const units = formData.get("units") as string;
+  const investmentStrategy = formData.get("investment_strategy") as string;
 
   const { data, error } = await supabase
     .from("properties")
@@ -85,6 +86,7 @@ export async function createProperty(formData: FormData) {
       city: city || null,
       state: state || null,
       units: units ? parseInt(units) : null,
+      investment_strategy: investmentStrategy || null,
     })
     .select()
     .single();
@@ -104,6 +106,7 @@ export async function updateProperty(id: string, formData: FormData) {
   const city = formData.get("city") as string;
   const state = formData.get("state") as string;
   const units = formData.get("units") as string;
+  const investmentStrategy = formData.get("investment_strategy") as string;
 
   const { data, error } = await supabase
     .from("properties")
@@ -113,6 +116,7 @@ export async function updateProperty(id: string, formData: FormData) {
       city: city || null,
       state: state || null,
       units: units ? parseInt(units) : null,
+      investment_strategy: investmentStrategy || null,
     })
     .eq("id", id)
     .eq("user_id", userId)
@@ -139,4 +143,3 @@ export async function deleteProperty(id: string) {
 
   revalidatePath("/dashboard/properties");
 }
-
