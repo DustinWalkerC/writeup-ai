@@ -1,10 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
-import { createClient } from '@supabase/supabase-js'
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
+import { supabaseAdmin as supabase } from '@/lib/supabase'
 
 export async function GET() {
   try {
@@ -29,8 +25,8 @@ export async function GET() {
         user_id: userId,
         company_name: null,
         company_logo_url: null,
-        accent_color: '#162e4b',
-        secondary_color: '#e9ebf2',
+        accent_color: '#27272A',
+        secondary_color: '#EFF6FF',
         ai_tone: 'balanced',
         custom_disclaimer: null,
       }

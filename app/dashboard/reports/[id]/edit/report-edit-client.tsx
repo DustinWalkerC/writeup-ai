@@ -1,5 +1,5 @@
 'use client';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import FileUploader from './file-uploader';
 
@@ -20,8 +20,9 @@ interface ReportEditClientProps {
 }
 
 type InputMode = 'guided' | 'freeform';
+type TierSlug = 'foundational' | 'professional' | 'institutional';
 
-export default function ReportEditClient({ report, property, existingFiles, tier }: ReportEditClientProps) {
+export default function ReportEditClient({ report, property, existingFiles, tier: stripeTier }: ReportEditClientProps) {
   const router = useRouter();
   const [files, setFiles] = useState<UploadedFile[]>(existingFiles);
   const [answers, setAnswers] = useState<Record<string, string>>((report.questionnaire_answers as Record<string,string>) || {});
@@ -31,6 +32,27 @@ export default function ReportEditClient({ report, property, existingFiles, tier
   const [generating, setGenerating] = useState(false);
   const [inputMode, setInputMode] = useState<InputMode>((report.input_mode as InputMode) || 'guided');
   const [freeformNarrative, setFreeformNarrative] = useState((report.freeform_narrative as string) || '');
+
+  // ── Tier: use dev override if set, otherwise Stripe tier ──
+  const [activeTier, setActiveTier] = useState<TierSlug>(stripeTier as TierSlug);
+
+  useEffect(() => {
+    function syncTier() {
+      if (process.env.NODE_ENV === 'development') {
+        const override = localStorage.getItem('writeup_tier_override');
+        if (override && override !== 'none') {
+          setActiveTier(override as TierSlug);
+        } else {
+          setActiveTier(stripeTier as TierSlug);
+        }
+      }
+    }
+    syncTier();
+
+    // Listen for tier override changes from the layout toggle
+    window.addEventListener('tierOverrideChanged', syncTier);
+    return () => window.removeEventListener('tierOverrideChanged', syncTier);
+  }, [stripeTier]);
 
   const month = (report.month as string) || '';
   const year = (report.year as number) || new Date().getFullYear();
@@ -67,14 +89,14 @@ export default function ReportEditClient({ report, property, existingFiles, tier
       propertyId: (report.property_id as string) || (property.id as string),
       month: String(monthNum),
       year: String(year),
-      tier,
+      tier: activeTier,
       distStatus,
       distNote,
       answers: JSON.stringify(answers),
       autoGenerate: 'true',
     });
     router.push(`/dashboard/reports/${report.id}/generate?${params.toString()}`);
-  }, [files, handleSave, report.id, report.property_id, property.id, month, year, tier, distStatus, distNote, answers, router]);
+  }, [files, handleSave, report.id, report.property_id, property.id, month, year, activeTier, distStatus, distNote, answers, router]);
 
   const hasT12 = files.some(f => f.file_type === 't12');
   const propertyName = (property.name as string) || 'Property';
@@ -124,7 +146,7 @@ export default function ReportEditClient({ report, property, existingFiles, tier
       {/* Stepper */}
       <div className="mb-8">
         <div className="relative flex items-center justify-between">
-          {/* Connector line — sits behind everything */}
+          {/* Connector line */}
           <div className="absolute top-[18px] left-[36px] right-[36px] h-[2px] bg-slate-200" />
           {/* Green progress overlay */}
           <div className="absolute top-[18px] left-[36px] h-[2px] bg-green-400 transition-all" style={{ width: `${(steps.filter(s => s.done).length / (steps.length - 1)) * (100 - (72 / 8))}%` }} />
@@ -158,12 +180,13 @@ export default function ReportEditClient({ report, property, existingFiles, tier
         </div>
       </div>
 
-      {/* File Upload Section — UNTOUCHED */}
+      {/* File Upload Section — NOW WITH TIER */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
         <FileUploader
           reportId={report.id as string}
           existingFiles={files}
           onFilesChanged={setFiles}
+          tier={activeTier}
         />
       </div>
 
@@ -211,7 +234,7 @@ export default function ReportEditClient({ report, property, existingFiles, tier
         </div>
       </div>
 
-      {/* Asset Manager Notes — with Guided/Freeform toggle at top */}
+      {/* Asset Manager Notes */}
       <div className="bg-white rounded-xl border border-slate-200 p-6 mb-6">
         <div className="flex items-center justify-between mb-4">
           <div>

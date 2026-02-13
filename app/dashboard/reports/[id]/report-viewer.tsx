@@ -1,10 +1,11 @@
 'use client'
 
-import { useState, useMemo, useRef } from 'react'
+import { useState, useMemo, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { SectionEditor } from './section-editor'
 import { saveSection, regenerateSection } from '@/app/actions/ai'
 import { REPORT_SECTIONS } from '@/lib/report-sections'
+import { ALL_SECTIONS } from '@/lib/section-definitions'
 import { StructuredContent, Property, UserSettings } from '@/lib/supabase'
 import { ReportTemplate } from '@/components/report-template'
 import { ExportDropdown } from '@/components/export-dropdown'
@@ -16,6 +17,8 @@ import {
   copyRichHTMLToClipboard,
   generateFilename,
 } from '@/lib/export-utils'
+
+// ── Types ──────────────────────────────────────────────────────
 
 interface GeneratedSection {
   id: string
@@ -51,6 +54,105 @@ type Props = {
 
 type ViewMode = 'formatted' | 'sections'
 
+// ── Content Rendering Utility ──────────────────────────────────
+// Claude generates section content that may contain:
+// 1. Pure markdown (narrative text)
+// 2. Inline HTML (SVG charts, HTML tables, styled KPI cards)
+// 3. A mix of both
+//
+// This function converts everything into safe, renderable HTML.
+
+function renderSectionContent(content: string): string {
+  if (!content) return ''
+
+  // Detect if content has inline HTML from Claude (charts, tables, SVGs)
+  const hasInlineHTML = /<(?:div|table|svg|span|style|tr|td|th)\b/i.test(content)
+
+  if (hasInlineHTML) {
+    // Content has inline HTML — preserve it, convert markdown formatting around it
+    // Split on HTML blocks to avoid mangling them
+    const parts = content.split(/(<(?:div|table|svg|style)[\s\S]*?<\/(?:div|table|svg|style)>)/gi)
+
+    return parts
+      .map((part) => {
+        // If this part is an HTML block, leave it untouched
+        if (/^<(?:div|table|svg|style)/i.test(part.trim())) {
+          return part
+        }
+        // Otherwise, apply markdown conversion to the text parts
+        return convertMarkdownToHTML(part)
+      })
+      .join('')
+  }
+
+  // Pure markdown content — full conversion
+  return convertMarkdownToHTML(content)
+}
+
+function convertMarkdownToHTML(text: string): string {
+  if (!text.trim()) return ''
+
+  let html = text
+    // Headers
+    .replace(/^### (.+)$/gm, '<h3 style="font-size:16px;font-weight:600;color:#0f172a;margin:16px 0 8px;">$1</h3>')
+    .replace(/^## (.+)$/gm, '<h2 style="font-size:18px;font-weight:600;color:#0f172a;margin:20px 0 10px;">$1</h2>')
+    // Bold and italic
+    .replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    // Bullet lists
+    .replace(/^[-*] (.+)$/gm, '<li style="margin:4px 0;padding-left:4px;">$1</li>')
+    // Wrap consecutive <li> in <ul>
+    .replace(/((?:<li[^>]*>.*?<\/li>\s*)+)/g, '<ul style="margin:8px 0;padding-left:20px;list-style:disc;">$1</ul>')
+    // Paragraphs — double newlines
+    .replace(/\n\n+/g, '</p><p style="margin:8px 0;line-height:1.6;color:#334155;">')
+    // Single newlines to <br>
+    .replace(/\n/g, '<br/>')
+
+  // Wrap in paragraph if not already wrapped
+  if (!html.startsWith('<h') && !html.startsWith('<ul') && !html.startsWith('<p')) {
+    html = `<p style="margin:8px 0;line-height:1.6;color:#334155;">${html}</p>`
+  }
+
+  return html
+}
+
+// ── Metric Card Renderer ───────────────────────────────────────
+// Renders KPI metric cards from the metrics array (used by all tiers)
+
+function renderMetricCards(
+  metrics: GeneratedSection['metrics'],
+  accentColor?: string
+): string {
+  if (!metrics || metrics.length === 0) return ''
+
+  const primary = accentColor || '#27272A'
+
+  const cards = metrics
+    .map(
+      (m) => `
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:14px 16px;min-width:140px;flex:1;">
+      <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;margin-bottom:4px;">${m.label}</div>
+      <div style="font-size:22px;font-weight:700;color:${primary};margin-bottom:4px;">${m.value}</div>
+      ${
+        m.change
+          ? `<div style="font-size:12px;font-weight:500;color:${
+              m.changeDirection === 'up' ? '#059669' : m.changeDirection === 'down' ? '#dc2626' : '#64748b'
+            };">
+          ${m.changeDirection === 'up' ? '&#9650;' : m.changeDirection === 'down' ? '&#9660;' : '&#8212;'} ${m.change}
+          ${m.vsbudget ? `<span style="color:#64748b;margin-left:6px;">vs budget: ${m.vsbudget}</span>` : ''}
+        </div>`
+          : ''
+      }
+    </div>`
+    )
+    .join('')
+
+  return `<div style="display:flex;gap:12px;flex-wrap:wrap;margin:16px 0;">${cards}</div>`
+}
+
+// ── Main Component ─────────────────────────────────────────────
+
 export function ReportViewer({ reportId, report, userSettings }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('formatted')
   const [regeneratingSection, setRegeneratingSection] = useState<string | null>(null)
@@ -66,30 +168,41 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
 
   const exportRef = useRef<HTMLDivElement>(null)
 
+  // Accent color for KPI cards
+  const accentColor = userSettings?.accent_color || '#27272A'
+
+  // ── Parse content from multiple formats ────────────────────
+
   function parseStructuredContent(
     content: StructuredContent | null,
     fallbackNarrative: string | null,
     generatedSections?: GeneratedSection[] | null
-  ): Record<string, { title: string; content: string; order: number }> {
+  ): Record<string, { title: string; content: string; order: number; metrics?: GeneratedSection['metrics'] }> {
+    // Priority 1: New pipeline generated_sections (Day 17+)
     if (generatedSections && Array.isArray(generatedSections) && generatedSections.length > 0) {
-      const result: Record<string, { title: string; content: string; order: number }> = {}
+      const result: Record<string, { title: string; content: string; order: number; metrics?: GeneratedSection['metrics'] }> = {}
       generatedSections
-        .filter(s => s.included)
+        .filter((s) => s.included)
         .forEach((s, index) => {
-          const def = REPORT_SECTIONS.find(rs => rs.id === s.id)
+          // Look up order from legacy sections first, then new section definitions
+          const legacyDef = REPORT_SECTIONS.find((rs) => rs.id === s.id)
+          const newDef = ALL_SECTIONS[s.id as keyof typeof ALL_SECTIONS]
           result[s.id] = {
             title: s.title,
             content: s.content,
-            order: def?.order || index + 1,
+            order: legacyDef?.order || (newDef ? index + 1 : index + 1),
+            metrics: s.metrics,
           }
         })
       return result
     }
 
+    // Priority 2: Legacy structured content
     if (content?.sections && Object.keys(content.sections).length > 0) {
       return content.sections
     }
 
+    // Priority 3: Raw narrative fallback
     if (fallbackNarrative) {
       return parseNarrativeIntoSections(fallbackNarrative)
     }
@@ -124,48 +237,83 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     const lowerTitle = title.toLowerCase()
     if (lowerTitle.includes('executive') || lowerTitle.includes('summary')) return 'executive_summary'
     if (lowerTitle.includes('occupancy') || lowerTitle.includes('leasing')) return 'occupancy_leasing'
-    if (lowerTitle.includes('financial') || lowerTitle.includes('performance'))
-      return 'financial_performance'
-    if (lowerTitle.includes('capital') || lowerTitle.includes('project')) return 'capital_projects'
+    if (lowerTitle.includes('revenue') && lowerTitle.includes('summary')) return 'revenue_summary'
+    if (lowerTitle.includes('revenue')) return 'revenue_analysis'
+    if (lowerTitle.includes('expense') && lowerTitle.includes('summary')) return 'expense_summary'
+    if (lowerTitle.includes('expense')) return 'expense_analysis'
+    if (lowerTitle.includes('noi') || lowerTitle.includes('net operating')) return 'noi_performance'
+    if (lowerTitle.includes('rent roll') && lowerTitle.includes('deep')) return 'rent_roll_deep_dive'
+    if (lowerTitle.includes('rent roll')) return 'rent_roll_insights'
+    if (lowerTitle.includes('budget')) return 'budget_vs_actual'
+    if (lowerTitle.includes('risk') && lowerTitle.includes('matrix')) return 'risk_matrix'
+    if (lowerTitle.includes('risk')) return 'risk_watch_items'
+    if (lowerTitle.includes('capital') && lowerTitle.includes('tracker')) return 'capital_improvements_tracker'
+    if (lowerTitle.includes('capital')) return 'capital_improvements'
+    if (lowerTitle.includes('investment thesis')) return 'investment_thesis_update'
+    if (lowerTitle.includes('lease expir')) return 'lease_expiration_rollover'
+    if (lowerTitle.includes('market') && lowerTitle.includes('submarket')) return 'market_submarket_analysis'
+    if (lowerTitle.includes('market')) return 'market_positioning'
+    if (lowerTitle.includes('resident') || lowerTitle.includes('operational')) return 'resident_operational_metrics'
+    if (lowerTitle.includes('regulatory') || lowerTitle.includes('compliance')) return 'regulatory_compliance'
+    if (lowerTitle.includes('strategic outlook')) return 'asset_manager_strategic_outlook'
+    if (lowerTitle.includes('outlook')) return 'asset_manager_outlook'
+    if (lowerTitle.includes('financial') || lowerTitle.includes('performance')) return 'financial_performance'
     if (lowerTitle.includes('operation')) return 'operations'
-    if (lowerTitle.includes('market') || lowerTitle.includes('outlook')) return 'market_outlook'
     return title.toLowerCase().replace(/[^a-z0-9]+/g, '_')
   }
 
-  const handleSaveSection = async (sectionId: string, content: string) => {
-    const result = await saveSection(reportId, sectionId, content)
-    if (result.success) {
-      setSections((prev) => ({
-        ...prev,
-        [sectionId]: { ...prev[sectionId], content },
-      }))
-    } else {
-      throw new Error(result.error)
-    }
-  }
+  // ── Section actions ────────────────────────────────────────
 
-  const handleRegenerateSection = async (sectionId: string, instructions?: string) => {
-    setRegeneratingSection(sectionId)
-    try {
-      const result = await regenerateSection(reportId, sectionId, instructions)
-      if (result.success && result.content) {
+  const handleSaveSection = useCallback(
+    async (sectionId: string, content: string) => {
+      const result = await saveSection(reportId, sectionId, content)
+      if (result.success) {
         setSections((prev) => ({
           ...prev,
-          [sectionId]: { ...prev[sectionId], content: result.content! },
+          [sectionId]: { ...prev[sectionId], content },
         }))
       } else {
-        alert(result.error || 'Failed to regenerate section')
+        throw new Error(result.error)
       }
-    } finally {
-      setRegeneratingSection(null)
-    }
-  }
+    },
+    [reportId]
+  )
+
+  const handleRegenerateSection = useCallback(
+    async (sectionId: string, instructions?: string) => {
+      setRegeneratingSection(sectionId)
+      try {
+        const result = await regenerateSection(reportId, sectionId, instructions)
+        if (result.success && result.content) {
+          setSections((prev) => ({
+            ...prev,
+            [sectionId]: { ...prev[sectionId], content: result.content! },
+          }))
+        } else {
+          alert(result.error || 'Failed to regenerate section')
+        }
+      } finally {
+        setRegeneratingSection(null)
+      }
+    },
+    [reportId]
+  )
+
+  // ── Computed data ──────────────────────────────────────────
 
   const orderedSections = useMemo(() => {
-    const result: Array<{ id: string; title: string; content: string; order: number; description: string; required: boolean }> = []
+    const result: Array<{
+      id: string
+      title: string
+      content: string
+      order: number
+      description: string
+      required: boolean
+      metrics?: GeneratedSection['metrics']
+    }> = []
 
     for (const [id, section] of Object.entries(sections)) {
-      const def = REPORT_SECTIONS.find(rs => rs.id === id)
+      const def = REPORT_SECTIONS.find((rs) => rs.id === id)
       result.push({
         id,
         title: section.title,
@@ -173,9 +321,11 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         order: section.order,
         description: def?.description || '',
         required: def?.required || false,
+        metrics: (section as any).metrics,
       })
     }
 
+    // Add empty entries for legacy sections not yet generated
     for (const def of REPORT_SECTIONS) {
       if (!sections[def.id]) {
         result.push({
@@ -207,7 +357,8 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     )
   }, [report, sections, previewNarrative, userSettings])
 
-  // Export handlers
+  // ── Export handlers ────────────────────────────────────────
+
   const showStatus = (message: string) => {
     setExportStatus(message)
     setTimeout(() => setExportStatus(null), 3000)
@@ -291,7 +442,9 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     },
   ]
 
-  const sectionCount = orderedSections.filter(s => s.content).length
+  const sectionCount = orderedSections.filter((s) => s.content).length
+
+  // ── Render ─────────────────────────────────────────────────
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
@@ -325,7 +478,9 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
               <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10" />
             </svg>
             Edit Sections
-            <span className="ml-1 px-1.5 py-0.5 text-xs bg-slate-200 text-slate-600 rounded-full">{sectionCount}</span>
+            <span className="ml-1 px-1.5 py-0.5 text-xs bg-slate-200 text-slate-600 rounded-full">
+              {sectionCount}
+            </span>
           </button>
         </div>
 
@@ -342,6 +497,31 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         {viewMode === 'formatted' && (
           <div ref={exportRef}>
             <ReportTemplate data={templateData} />
+
+            {/* Render sections with inline HTML charts if ReportTemplate doesn't handle them */}
+            {/* This is a fallback — if ReportTemplate already renders generated_sections, remove this block */}
+            {report.generated_sections &&
+              Array.isArray(report.generated_sections) &&
+              report.generated_sections.length > 0 &&
+              !templateData && (
+                <div style={{ maxWidth: '800px', margin: '0 auto', padding: '32px 24px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif' }}>
+                  {orderedSections
+                    .filter((s) => s.content)
+                    .map((section) => (
+                      <div key={section.id} style={{ marginBottom: '32px' }}>
+                        <h2 style={{ fontSize: '20px', fontWeight: 700, color: '#0f172a', marginBottom: '12px', borderBottom: `2px solid ${accentColor}`, paddingBottom: '8px' }}>
+                          {section.title}
+                        </h2>
+                        {/* KPI Metric Cards */}
+                        {section.metrics && section.metrics.length > 0 && (
+                          <div dangerouslySetInnerHTML={{ __html: renderMetricCards(section.metrics, accentColor) }} />
+                        )}
+                        {/* Section content with inline HTML charts */}
+                        <div dangerouslySetInnerHTML={{ __html: renderSectionContent(section.content) }} />
+                      </div>
+                    ))}
+                </div>
+              )}
           </div>
         )}
 
@@ -350,17 +530,41 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
             {orderedSections
               .filter((s) => s.content)
               .map((section, index) => (
-                <SectionEditor
-                  key={section.id}
-                  sectionId={section.id}
-                  title={section.title}
-                  content={section.content}
-                  order={section.order}
-                  onSave={handleSaveSection}
-                  onRegenerate={handleRegenerateSection}
-                  isRegenerating={regeneratingSection === section.id}
-                  animationDelay={index}
-                />
+                <div key={section.id}>
+                  {/* KPI cards above the editor for this section */}
+                  {section.metrics && section.metrics.length > 0 && (
+                    <div
+                      className="mb-2 px-4"
+                      dangerouslySetInnerHTML={{ __html: renderMetricCards(section.metrics, accentColor) }}
+                    />
+                  )}
+                  <SectionEditor
+                    sectionId={section.id}
+                    title={section.title}
+                    content={section.content}
+                    order={section.order}
+                    onSave={handleSaveSection}
+                    onRegenerate={handleRegenerateSection}
+                    isRegenerating={regeneratingSection === section.id}
+                    animationDelay={index}
+                  />
+                  {/* Render inline HTML visualizations below the editor */}
+                  {/<(?:div|table|svg|style)\b/i.test(section.content) && (
+                    <div className="mt-2 mb-4 px-4">
+                      <div className="rounded-lg border border-slate-200 overflow-hidden">
+                        <div className="px-3 py-1.5 bg-slate-50 border-b border-slate-200">
+                          <span className="text-xs font-medium text-slate-500">Chart Preview</span>
+                        </div>
+                        <div
+                          className="p-4"
+                          dangerouslySetInnerHTML={{
+                            __html: extractHTMLBlocks(section.content),
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
               ))}
           </div>
         )}
@@ -403,4 +607,19 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       </div>
     </div>
   )
+}
+
+// ── Helper: Extract only HTML blocks from mixed content ──────
+// Used in Edit Sections view to show chart previews separately
+
+function extractHTMLBlocks(content: string): string {
+  const htmlBlocks: string[] = []
+  const regex = /<(?:div|table|svg|style)[\s\S]*?<\/(?:div|table|svg|style)>/gi
+  let match
+
+  while ((match = regex.exec(content)) !== null) {
+    htmlBlocks.push(match[0])
+  }
+
+  return htmlBlocks.join('')
 }

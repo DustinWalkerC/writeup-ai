@@ -82,16 +82,41 @@ async function buildPrompts(input: ReportGenerationInput, fileContents: Record<s
   const { data: property } = await supabase.from('properties').select('*').eq('id', input.propertyId).single();
   const { data: settings } = await supabase.from('user_settings').select('*').eq('user_id', input.userId).single();
 
+  // Fetch prior month's report for historical context (Option A)
+  let historicalContext: string | undefined;
+  const priorMonth = input.selectedMonth === 1 ? 12 : input.selectedMonth - 1;
+  const priorYear = input.selectedMonth === 1 ? input.selectedYear - 1 : input.selectedYear;
+  const { data: priorReport } = await supabase
+    .from('reports')
+    .select('generated_sections, financial_data')
+    .eq('property_id', input.propertyId)
+    .eq('selected_month', priorMonth)
+    .eq('selected_year', priorYear)
+    .eq('status', 'complete')
+    .single();
+
+  if (priorReport?.generated_sections) {
+    const priorSections = priorReport.generated_sections as Array<{ id: string; title: string; metrics?: Array<{ label: string; value: string }> }>;
+    const priorMetrics = priorSections
+      .filter(s => s.metrics && s.metrics.length > 0)
+      .flatMap(s => s.metrics!.map(m => `${m.label}: ${m.value}`));
+
+    if (priorMetrics.length > 0) {
+      historicalContext = `Prior month (${priorMonth}/${priorYear}) key metrics:\n${priorMetrics.join('\n')}`;
+    }
+  }
+
   const systemPrompt = buildSystemPrompt({
     tier: input.tier,
     propertyName: property?.name || 'Unknown Property',
     propertyAddress: property?.address,
     unitCount: property?.units,
     investmentStrategy: property?.investment_strategy,
+    historicalContext,
     brandColors: settings ? {
-      primary: settings.accent_color || '#162e4b',
-      secondary: settings.secondary_color || '#e9ebf2',
-      accent: settings.accent_color || '#2563eb'
+      primary: settings.accent_color || '#27272A',
+      secondary: settings.secondary_color || '#EFF6FF',
+      accent: settings.accent_color || '#2563EB'
     } : undefined,
   });
 
@@ -202,9 +227,9 @@ export async function regenerateSingleSection(params: {
     unitCount: property.units,
     investmentStrategy: property.investment_strategy,
     brandColors: settings ? {
-      primary: settings.accent_color || '#162e4b',
-      secondary: settings.secondary_color || '#e9ebf2',
-      accent: settings.accent_color || '#2563eb'
+      primary: settings.accent_color || '#27272A',
+      secondary: settings.secondary_color || '#EFF6FF',
+      accent: settings.accent_color || '#2563EB'
     } : undefined,
   });
 
@@ -253,3 +278,4 @@ function parseClaudeResponse(content: string) {
     };
   }
 }
+

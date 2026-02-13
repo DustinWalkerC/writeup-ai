@@ -30,7 +30,8 @@ export function SettingsForm({ initialSettings }: Props) {
 
   // Form state
   const [companyName, setCompanyName] = useState(initialSettings?.company_name || '')
-  const [accentColor, setAccentColor] = useState(initialSettings?.accent_color || '#162e4b')
+  const [accentColor, setAccentColor] = useState(initialSettings?.accent_color || '#27272A')
+  const [secondaryColor, setSecondaryColor] = useState(initialSettings?.secondary_color || '#EFF6FF')
   const [aiTone, setAiTone] = useState<'conservative' | 'balanced' | 'optimistic'>(
     (initialSettings?.ai_tone as 'conservative' | 'balanced' | 'optimistic') || 'balanced'
   )
@@ -47,6 +48,7 @@ export function SettingsForm({ initialSettings }: Props) {
         body: JSON.stringify({
           company_name: companyName,
           accent_color: accentColor,
+          secondary_color: secondaryColor,
           ai_tone: aiTone,
           custom_disclaimer: customDisclaimer,
         }),
@@ -54,7 +56,7 @@ export function SettingsForm({ initialSettings }: Props) {
 
       const result = await response.json()
       setSaveStatus(result.success ? 'saved' : 'error')
-      
+
       if (result.success && result.data) {
         setSettings(result.data)
       }
@@ -101,7 +103,7 @@ export function SettingsForm({ initialSettings }: Props) {
 
       const result = await response.json()
       if (result.success) {
-        setSettings(prev => prev ? { ...prev, company_logo_url: null } : null)
+        setSettings(prev => (prev ? { ...prev, company_logo_url: null } : null))
       }
     } catch (error) {
       console.error('Remove logo error:', error)
@@ -121,7 +123,7 @@ export function SettingsForm({ initialSettings }: Props) {
           {/* Company Info */}
           <section className="bg-white rounded-xl border border-slate-200 p-6">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Company Information</h2>
-            
+
             <div className="space-y-6">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
@@ -147,18 +149,20 @@ export function SettingsForm({ initialSettings }: Props) {
           {/* Branding */}
           <section className="bg-white rounded-xl border border-slate-200 p-6">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">Report Branding</h2>
-            
+
             <ColorPicker
-              label="Accent Color"
+              label="Brand Colors"
               value={accentColor}
+              secondaryValue={secondaryColor}
               onChange={setAccentColor}
+              onSecondaryChange={setSecondaryColor}
             />
           </section>
 
           {/* AI Settings */}
           <section className="bg-white rounded-xl border border-slate-200 p-6">
             <h2 className="text-lg font-semibold text-slate-900 mb-4">AI Writing Style</h2>
-            
+
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -225,19 +229,19 @@ export function SettingsForm({ initialSettings }: Props) {
             <h3 className="text-sm font-medium text-slate-500 mb-3">Preview</h3>
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
               {/* Header Preview */}
-              <div 
+              <div
                 className="p-4"
                 style={{ backgroundColor: accentColor }}
               >
                 {settings?.company_logo_url ? (
-                  <img 
-                    src={settings.company_logo_url} 
-                    alt="Logo" 
+                  <img
+                    src={settings.company_logo_url}
+                    alt="Logo"
                     className="h-8 object-contain"
                     style={{ filter: 'brightness(0) invert(1)' }}
                   />
                 ) : (
-                  <span 
+                  <span
                     className="font-semibold"
                     style={{ color: getContrastColor(accentColor) }}
                   >
@@ -245,10 +249,10 @@ export function SettingsForm({ initialSettings }: Props) {
                   </span>
                 )}
               </div>
-              
+
               {/* Body Preview */}
               <div className="p-4 space-y-3">
-                <div 
+                <div
                   className="text-sm font-semibold"
                   style={{ color: accentColor }}
                 >
@@ -257,27 +261,27 @@ export function SettingsForm({ initialSettings }: Props) {
                 <div className="h-2 bg-slate-200 rounded w-full"></div>
                 <div className="h-2 bg-slate-200 rounded w-4/5"></div>
                 <div className="h-2 bg-slate-200 rounded w-3/5"></div>
-                
+
                 {/* KPI Preview */}
                 <div className="grid grid-cols-2 gap-2 mt-4">
-                  <div 
+                  <div
                     className="p-2 rounded-lg"
                     style={{ backgroundColor: palette.primaryLight }}
                   >
                     <div className="text-xs text-slate-500">Occupancy</div>
-                    <div 
+                    <div
                       className="text-lg font-bold"
                       style={{ color: accentColor }}
                     >
                       94.5%
                     </div>
                   </div>
-                  <div 
+                  <div
                     className="p-2 rounded-lg"
                     style={{ backgroundColor: palette.primaryLight }}
                   >
                     <div className="text-xs text-slate-500">NOI</div>
-                    <div 
+                    <div
                       className="text-lg font-bold"
                       style={{ color: accentColor }}
                     >
