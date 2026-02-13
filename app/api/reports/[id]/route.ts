@@ -39,6 +39,7 @@ export async function PATCH(
       'distribution_note', 'selected_month', 'selected_year',
       'generated_sections', 'raw_analysis', 'generation_status',
       'generation_completed_at', 'generation_config',
+      'input_mode', 'freeform_narrative',
     ];
 
     const updateData: Record<string, unknown> = {};

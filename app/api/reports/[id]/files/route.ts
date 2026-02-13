@@ -14,25 +14,28 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
     if (!file || !fileType) return NextResponse.json({ error: 'File and fileType required' }, { status: 400 });
 
-    const validTypes = ['t12', 'rent_roll', 'leasing_activity', 'other'];
+    const validTypes = ['t12', 'rent_roll', 'leasing_activity', 'other', 'additional'];
     if (!validTypes.includes(fileType)) return NextResponse.json({ error: 'Invalid file type' }, { status: 400 });
 
     const ext = file.name.split('.').pop()?.toLowerCase();
-    if (!ext || !['xlsx','xls','csv','pdf','txt'].includes(ext))
-      return NextResponse.json({ error: 'Unsupported format. Use .xlsx, .csv, or .pdf' }, { status: 400 });
+    if (!ext || !['xlsx','xls','csv','pdf','txt','doc','docx'].includes(ext))
+      return NextResponse.json({ error: 'Unsupported format. Use .xlsx, .csv, .pdf, .doc, or .txt' }, { status: 400 });
 
     if (file.size > 10 * 1024 * 1024)
       return NextResponse.json({ error: 'File too large (10MB max)' }, { status: 400 });
 
-    // Remove existing file of same type
-    const { data: existing } = await supabase
-      .from('report_files').select('id, storage_path')
-      .eq('report_id', reportId).eq('file_type', fileType).eq('user_id', userId);
+    // For primary file types, remove existing file of same type
+    // For additional files, don't replace — allow multiple
+    if (fileType !== 'additional') {
+      const { data: existing } = await supabase
+        .from('report_files').select('id, storage_path')
+        .eq('report_id', reportId).eq('file_type', fileType).eq('user_id', userId);
 
-    if (existing?.length) {
-      for (const e of existing) {
-        await supabase.storage.from('report-files').remove([e.storage_path]);
-        await supabase.from('report_files').delete().eq('id', e.id);
+      if (existing?.length) {
+        for (const e of existing) {
+          await supabase.storage.from('report-files').remove([e.storage_path]);
+          await supabase.from('report_files').delete().eq('id', e.id);
+        }
       }
     }
 
@@ -84,5 +87,3 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
   await supabase.from('report_files').delete().eq('id', fileId);
   return NextResponse.json({ success: true });
 }
-
-
