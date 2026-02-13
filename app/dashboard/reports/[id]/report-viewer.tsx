@@ -71,12 +71,13 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     fallbackNarrative: string | null,
     generatedSections?: GeneratedSection[] | null
   ): Record<string, { title: string; content: string; order: number }> {
-    // Priority 1: generated_sections from the new Day 16 pipeline (array format)
+    // Priority 1: generated_sections from the Day 16 pipeline (array format)
     if (generatedSections && Array.isArray(generatedSections) && generatedSections.length > 0) {
       const result: Record<string, { title: string; content: string; order: number }> = {}
       generatedSections
         .filter(s => s.included)
         .forEach((s, index) => {
+          // Try to find a matching REPORT_SECTIONS entry for ordering, fall back to array index
           const def = REPORT_SECTIONS.find(rs => rs.id === s.id)
           result[s.id] = {
             title: s.title,
@@ -164,12 +165,34 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     }
   }
 
+  // Build ordered sections from ACTUAL parsed sections, not just REPORT_SECTIONS
   const orderedSections = useMemo(() => {
-    return REPORT_SECTIONS.map((def) => ({
-      ...def,
-      ...sections[def.id],
-      content: sections[def.id]?.content || '',
-    })).sort((a, b) => a.order - b.order)
+    const result: Array<{ id: string; title: string; content: string; order: number; description: string; required: boolean }> = []
+
+    // Add all sections from the parsed state (covers new pipeline IDs)
+    for (const [id, section] of Object.entries(sections)) {
+      const def = REPORT_SECTIONS.find(rs => rs.id === id)
+      result.push({
+        id,
+        title: section.title,
+        content: section.content,
+        order: section.order,
+        description: def?.description || '',
+        required: def?.required || false,
+      })
+    }
+
+    // For legacy edit view: add any REPORT_SECTIONS that aren't already present
+    for (const def of REPORT_SECTIONS) {
+      if (!sections[def.id]) {
+        result.push({
+          ...def,
+          content: '',
+        })
+      }
+    }
+
+    return result.sort((a, b) => a.order - b.order)
   }, [sections])
 
   const previewNarrative = useMemo(() => {
@@ -331,18 +354,20 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
 
         {viewMode === 'sections' && (
           <div className="space-y-4">
-            {orderedSections.map((section) => (
-              <SectionEditor
-                key={section.id}
-                sectionId={section.id}
-                title={section.title}
-                content={section.content}
-                order={section.order}
-                onSave={handleSaveSection}
-                onRegenerate={handleRegenerateSection}
-                isRegenerating={regeneratingSection === section.id}
-              />
-            ))}
+            {orderedSections
+              .filter((s) => s.content) // Only show sections that have content
+              .map((section) => (
+                <SectionEditor
+                  key={section.id}
+                  sectionId={section.id}
+                  title={section.title}
+                  content={section.content}
+                  order={section.order}
+                  onSave={handleSaveSection}
+                  onRegenerate={handleRegenerateSection}
+                  isRegenerating={regeneratingSection === section.id}
+                />
+              ))}
           </div>
         )}
 
