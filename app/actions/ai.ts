@@ -599,3 +599,192 @@ function rebuildNarrativeFromSections(
     .map(s => `## ${s?.title}\n\n${s?.content}`)
     .join('\n\n')
 }
+/**
+ * Reorder sections by saving the new order to generated_sections
+ */
+export async function reorderSections(
+  reportId: string,
+  orderedSectionIds: string[]
+): Promise<{ success: boolean; error?: string }> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { success: false, error: 'Unauthorized' }
+  }
+
+  try {
+    const { data: report, error: fetchError } = await supabase
+      .from('reports')
+      .select('generated_sections')
+      .eq('id', reportId)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !report) {
+      return { success: false, error: 'Report not found' }
+    }
+
+    const genSections = (report.generated_sections as Array<Record<string, unknown>>) || []
+    
+    // Build a map for quick lookup
+    const sectionMap = new Map(genSections.map(s => [s.id as string, s]))
+    
+    // Reorder: place sections in the order specified by orderedSectionIds
+    const reordered = orderedSectionIds
+      .map(id => sectionMap.get(id))
+      .filter(Boolean) as Array<Record<string, unknown>>
+    
+    // Append any sections not in the ordered list (shouldn't happen, but safety)
+    for (const s of genSections) {
+      if (!orderedSectionIds.includes(s.id as string)) {
+        reordered.push(s)
+      }
+    }
+
+    const { error: updateError } = await supabase
+      .from('reports')
+      .update({
+        generated_sections: reordered,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', reportId)
+      .eq('user_id', userId)
+
+    if (updateError) {
+      return { success: false, error: updateError.message }
+    }
+
+    revalidatePath(`/dashboard/reports/${reportId}`)
+    return { success: true }
+  } catch (error) {
+    console.error('Reorder sections error:', error)
+    return { success: false, error: 'Failed to reorder sections' }
+  }
+}
+/**
+ * Remove (hide) a section from the report
+ */
+export async function removeSection(
+  reportId: string,
+  sectionId: string
+): Promise<{ success: boolean; error?: string }> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { success: false, error: 'Unauthorized' }
+  }
+
+  try {
+    const { data: report, error: fetchError } = await supabase
+      .from('reports')
+      .select('generated_sections')
+      .eq('id', reportId)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !report) {
+      return { success: false, error: 'Report not found' }
+    }
+
+    const genSections = (report.generated_sections as Array<Record<string, unknown>>) || []
+    
+    const updated = genSections.map(s => {
+      if ((s.id as string) === sectionId) {
+        return { ...s, included: false, skipReason: 'Removed by user' }
+      }
+      return s
+    })
+
+    const { error: updateError } = await supabase
+      .from('reports')
+      .update({
+        generated_sections: updated,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', reportId)
+      .eq('user_id', userId)
+
+    if (updateError) {
+      return { success: false, error: updateError.message }
+    }
+
+    revalidatePath(`/dashboard/reports/${reportId}`)
+    return { success: true }
+  } catch (error) {
+    console.error('Remove section error:', error)
+    return { success: false, error: 'Failed to remove section' }
+  }
+}
+/**
+ * Add (restore or create blank) a section to the report
+ */
+export async function addSection(
+  reportId: string,
+  sectionId: string,
+  sectionTitle: string
+): Promise<{ success: boolean; error?: string }> {
+  const { userId } = await auth()
+  if (!userId) {
+    return { success: false, error: 'Unauthorized' }
+  }
+
+  try {
+    const { data: report, error: fetchError } = await supabase
+      .from('reports')
+      .select('generated_sections')
+      .eq('id', reportId)
+      .eq('user_id', userId)
+      .single()
+
+    if (fetchError || !report) {
+      return { success: false, error: 'Report not found' }
+    }
+
+    const genSections = (report.generated_sections as Array<Record<string, unknown>>) || []
+    
+    // Check if section already exists (was previously removed)
+    const existingIndex = genSections.findIndex(s => (s.id as string) === sectionId)
+    
+    let updated: Array<Record<string, unknown>>
+    
+    if (existingIndex >= 0) {
+      // Re-include the existing section
+      updated = genSections.map(s => {
+        if ((s.id as string) === sectionId) {
+          return { ...s, included: true, skipReason: null }
+        }
+        return s
+      })
+    } else {
+      // Add a new blank section at the end
+      updated = [
+        ...genSections,
+        {
+          id: sectionId,
+          title: sectionTitle,
+          content: '',
+          metrics: [],
+          included: true,
+          skipReason: null,
+        },
+      ]
+    }
+
+    const { error: updateError } = await supabase
+      .from('reports')
+      .update({
+        generated_sections: updated,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', reportId)
+      .eq('user_id', userId)
+
+    if (updateError) {
+      return { success: false, error: updateError.message }
+    }
+
+    revalidatePath(`/dashboard/reports/${reportId}`)
+    return { success: true }
+  } catch (error) {
+    console.error('Add section error:', error)
+    return { success: false, error: 'Failed to add section' }
+  }
+}

@@ -1,11 +1,12 @@
 'use client'
 
+import type React from 'react'
 import { useState, useMemo, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { SectionEditor } from './section-editor'
-import { saveSection, regenerateSection } from '@/app/actions/ai'
+import { saveSection, regenerateSection, reorderSections, removeSection, addSection } from '@/app/actions/ai'
 import { REPORT_SECTIONS } from '@/lib/report-sections'
-import { ALL_SECTIONS } from '@/lib/section-definitions'
+import { ALL_SECTIONS, TIER_SECTIONS, SectionId } from '@/lib/section-definitions'
 import { StructuredContent, Property, UserSettings } from '@/lib/supabase'
 import { ReportTemplate } from '@/components/report-template'
 import { ExportDropdown } from '@/components/export-dropdown'
@@ -165,6 +166,8 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
   )
   const [isExporting, setIsExporting] = useState(false)
   const [exportStatus, setExportStatus] = useState<string | null>(null)
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
 
   const exportRef = useRef<HTMLDivElement>(null)
 
@@ -338,6 +341,80 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     return result.sort((a, b) => a.order - b.order)
   }, [sections])
 
+  // ── Reorder via drag-and-drop ──────────────────────────────
+
+  const handleDragStart = useCallback((index: number) => {
+    setDraggedIndex(index)
+  }, [])
+
+  const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
+    e.preventDefault()
+    setDragOverIndex(index)
+  }, [])
+
+  const handleDrop = useCallback(async (targetIndex: number) => {
+    if (draggedIndex === null || draggedIndex === targetIndex) {
+      setDraggedIndex(null)
+      setDragOverIndex(null)
+      return
+    }
+
+    const activeSections = orderedSections.filter(s => s.content)
+    const newOrder = [...activeSections]
+    const [moved] = newOrder.splice(draggedIndex, 1)
+    newOrder.splice(targetIndex, 0, moved)
+
+    // Optimistic update: reorder in local state
+    const newSections = { ...sections }
+    newOrder.forEach((s, i) => {
+      if (newSections[s.id]) {
+        newSections[s.id] = { ...newSections[s.id], order: i + 1 }
+      }
+    })
+    setSections(newSections)
+
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+
+    // Persist to DB
+    await reorderSections(reportId, newOrder.map(s => s.id))
+  }, [draggedIndex, orderedSections, sections, reportId])
+
+  const handleDragEnd = useCallback(() => {
+    setDraggedIndex(null)
+    setDragOverIndex(null)
+  }, [])
+
+  // ── Remove section ─────────────────────────────────────────
+
+  const handleRemoveSection = useCallback(async (sectionId: string) => {
+    // Optimistic update
+    setSections(prev => {
+      const updated = { ...prev }
+      delete updated[sectionId]
+      return updated
+    })
+
+    await removeSection(reportId, sectionId)
+  }, [reportId])
+
+  // ── Add section ────────────────────────────────────────────
+
+  const handleAddSection = useCallback(async (sectionId: string, sectionTitle: string) => {
+    // Optimistic update
+    const maxOrder = Math.max(...Object.values(sections).map(s => s.order), 0)
+    setSections(prev => ({
+      ...prev,
+      [sectionId]: {
+        title: sectionTitle,
+        content: '',
+        order: maxOrder + 1,
+      },
+    }))
+
+    await addSection(reportId, sectionId, sectionTitle)
+  }, [reportId, sections])
+
   const previewNarrative = useMemo(() => {
     return orderedSections
       .filter((s) => s.content)
@@ -444,6 +521,26 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
 
   const sectionCount = orderedSections.filter((s) => s.content).length
 
+  // Sections available to add (in the tier but not currently included)
+  const availableSectionsToAdd = useMemo(() => {
+    // Try to determine tier from generated_sections count or default to all sections
+    const currentIds = new Set(Object.keys(sections))
+    
+    // Check all tier mappings and find the best match
+    const tierCandidate = (TIER_SECTIONS as any)?.all
+    const allSectionIds = (Array.isArray(tierCandidate) ? tierCandidate : Object.keys(ALL_SECTIONS)) as SectionId[]
+    
+    return allSectionIds
+      .filter(id => !currentIds.has(id))
+      .map(id => ({
+        id,
+        title: ALL_SECTIONS[id].title,
+        description: ALL_SECTIONS[id].description,
+      }))
+  }, [sections])
+
+  const [showAddMenu, setShowAddMenu] = useState(false)
+
   // ── Render ─────────────────────────────────────────────────
 
   return (
@@ -526,11 +623,24 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         )}
 
         {viewMode === 'sections' && (
-          <div className="space-y-3">
+          <div className="space-y-1">
+            {/* Section list with drag-and-drop */}
             {orderedSections
               .filter((s) => s.content)
               .map((section, index) => (
-                <div key={section.id}>
+                <div
+                  key={section.id}
+                  draggable
+                  onDragStart={() => handleDragStart(index)}
+                  onDragOver={(e) => handleDragOver(e, index)}
+                  onDrop={() => handleDrop(index)}
+                  onDragEnd={handleDragEnd}
+                  className={`transition-all ${
+                    dragOverIndex === index && draggedIndex !== index
+                      ? 'border-t-2 border-cyan-400 pt-1'
+                      : ''
+                  }`}
+                >
                   {/* KPI cards above the editor for this section */}
                   {section.metrics && section.metrics.length > 0 && (
                     <div
@@ -545,8 +655,13 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                     order={section.order}
                     onSave={handleSaveSection}
                     onRegenerate={handleRegenerateSection}
+                    onRemove={handleRemoveSection}
                     isRegenerating={regeneratingSection === section.id}
                     animationDelay={index}
+                    isDragging={draggedIndex === index}
+                    dragHandleProps={{
+                      onMouseDown: (e: React.MouseEvent) => e.stopPropagation(),
+                    }}
                   />
                   {/* Render inline HTML visualizations below the editor */}
                   {/<(?:div|table|svg|style)\b/i.test(section.content) && (
@@ -566,6 +681,94 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                   )}
                 </div>
               ))}
+
+            {/* Empty sections (content === '') get a generate CTA */}
+            {orderedSections
+              .filter((s) => s.content === '' && sections[s.id])
+              .map((section) => (
+                <div key={section.id} className="border border-dashed border-slate-200 rounded-xl p-4 flex items-center justify-between">
+                  <div>
+                    <h3 className="font-medium text-slate-700">{section.title}</h3>
+                    <p className="text-sm text-slate-400">No content yet</p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleRegenerateSection(section.id)}
+                      disabled={regeneratingSection === section.id}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-white rounded-lg shadow-sm transition-all"
+                      style={{
+                        background: 'linear-gradient(135deg, #0891b2, #0d9488)',
+                      }}
+                    >
+                      {regeneratingSection === section.id ? (
+                        <>
+                          <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Generate
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleRemoveSection(section.id)}
+                      className="p-1.5 text-slate-400 hover:text-red-500 transition-colors"
+                      title="Remove"
+                    >
+                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+              ))}
+
+            {/* Add Section Button */}
+            <div className="relative pt-2">
+              <button
+                onClick={() => setShowAddMenu(!showAddMenu)}
+                className="w-full flex items-center justify-center gap-2 py-3 border-2 border-dashed border-slate-200 rounded-xl text-sm font-medium text-slate-500 hover:border-cyan-300 hover:text-cyan-600 transition-colors"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                </svg>
+                Add Section
+              </button>
+
+              {/* Add Section Dropdown */}
+              {showAddMenu && availableSectionsToAdd.length > 0 && (
+                <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-slate-200 rounded-xl shadow-lg max-h-64 overflow-y-auto z-20">
+                  <div className="p-2">
+                    <p className="px-3 py-1.5 text-xs font-medium text-slate-400 uppercase tracking-wider">Available Sections</p>
+                    {availableSectionsToAdd.map((s) => (
+                      <button
+                        key={s.id}
+                        onClick={() => {
+                          handleAddSection(s.id, s.title)
+                          setShowAddMenu(false)
+                        }}
+                        className="w-full text-left px-3 py-2 rounded-lg hover:bg-slate-50 transition-colors"
+                      >
+                        <span className="block text-sm font-medium text-slate-700">{s.title}</span>
+                        <span className="block text-xs text-slate-400">{s.description}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {showAddMenu && availableSectionsToAdd.length === 0 && (
+                <div className="absolute bottom-full left-0 right-0 mb-2 bg-white border border-slate-200 rounded-xl shadow-lg p-4 text-center z-20">
+                  <p className="text-sm text-slate-500">All available sections are already in the report.</p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
