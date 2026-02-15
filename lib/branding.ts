@@ -1,5 +1,14 @@
 // lib/branding.ts
 
+/**
+ * CORE — Brand Color System
+ *
+ * Updated to support 3 user-selectable colors:
+ *   accent_color        → Report primary (headers, bars)
+ *   secondary_color     → Report secondary (backgrounds, alt rows)
+ *   report_accent_color → Report accent (highlights, trend lines) — NEW
+ */
+
 export type BrandColors = {
   primary: string;
   primaryLight: string;
@@ -13,7 +22,8 @@ export type BrandColors = {
 };
 
 /**
- * Generate a complete color palette from a single accent color
+ * Generate a complete color palette from a single accent color.
+ * Used for the Settings preview and derived colors.
  */
 export function generateColorPalette(accentColor: string): BrandColors {
   const hsl = hexToHSL(accentColor);
@@ -32,51 +42,66 @@ export function generateColorPalette(accentColor: string): BrandColors {
 }
 
 /**
- * Preset color schemes for report branding
- * Each preset has a primary (dark) and secondary (light) color, plus a display name.
+ * Preset color schemes — now with 3 colors each.
+ * Clicking a preset sets primary, secondary, AND accent at once.
  */
-export const COLOR_PRESETS = {
+export type ColorPreset = {
+  name: string;
+  primary: string;
+  secondary: string;
+  accent: string;
+};
+
+export const COLOR_PRESETS: Record<string, ColorPreset> = {
   charcoalSapphire: {
     name: 'Charcoal & Sapphire',
     primary: '#27272A',
     secondary: '#EFF6FF',
+    accent: '#2563EB',
   },
   navyGold: {
     name: 'Navy & Gold',
     primary: '#1B2A4A',
     secondary: '#FEF9E7',
+    accent: '#C9A84C',
   },
   slateEmerald: {
     name: 'Slate & Emerald',
     primary: '#334155',
-    secondary: '#ECFDF5',
+    secondary: '#F0FDF4',
+    accent: '#059669',
   },
   professional: {
     name: 'Professional Blue',
     primary: '#162e4b',
-    secondary: '#e9ebf2',
+    secondary: '#EFF6FF',
+    accent: '#3B82F6',
   },
   modern: {
     name: 'Modern Teal',
-    primary: '#0d9488',
-    secondary: '#f0fdfa',
+    primary: '#0F766E',
+    secondary: '#F0FDFA',
+    accent: '#14B8A6',
   },
   corporate: {
     name: 'Corporate Navy',
-    primary: '#1e3a5f',
-    secondary: '#f8fafc',
+    primary: '#1E3A5F',
+    secondary: '#F8FAFC',
+    accent: '#2563EB',
   },
   elegant: {
     name: 'Elegant Charcoal',
-    primary: '#374151',
-    secondary: '#f9fafb',
+    primary: '#18181B',
+    secondary: '#FAFAFA',
+    accent: '#6366F1',
   },
   vibrant: {
     name: 'Vibrant Cyan',
-    primary: '#0891b2',
-    secondary: '#ecfeff',
+    primary: '#0E7490',
+    secondary: '#ECFEFF',
+    accent: '#06B6D4',
   },
-} as const;
+};
 
 export type ColorPresetKey = keyof typeof COLOR_PRESETS;
 
@@ -89,9 +114,8 @@ export const DEFAULT_BRAND_COLORS = {
   accent: '#2563EB',
 };
 
-/**
- * Convert hex to HSL
- */
+// ── Color utility functions ──
+
 function hexToHSL(hex: string): { h: number; s: number; l: number } {
   const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
   if (!result) return { h: 0, s: 0, l: 0 };
@@ -119,9 +143,6 @@ function hexToHSL(hex: string): { h: number; s: number; l: number } {
   return { h: h * 360, s: s * 100, l: l * 100 };
 }
 
-/**
- * Convert HSL to hex
- */
 function hslToHex({ h, s, l }: { h: number; s: number; l: number }): string {
   s /= 100;
   l /= 100;
@@ -146,17 +167,11 @@ function hslToHex({ h, s, l }: { h: number; s: number; l: number }): string {
   return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
 }
 
-/**
- * Check if color is light or dark
- */
 export function isLightColor(hex: string): boolean {
   const { l } = hexToHSL(hex);
   return l > 50;
 }
 
-/**
- * Get contrasting text color for a background
- */
 export function getContrastColor(hex: string): string {
   return isLightColor(hex) ? '#1e293b' : '#ffffff';
 }

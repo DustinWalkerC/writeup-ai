@@ -96,7 +96,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 )}
               </div>
             )}
-            <UserButton afterSignOutUrl="/" />
+            <div suppressHydrationWarning>
+              <UserButton afterSignOutUrl="/" />
+            </div>
           </div>
         </div>
       </header>

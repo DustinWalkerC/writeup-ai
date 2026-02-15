@@ -24,6 +24,43 @@ interface AnalysisStage {
   status: 'pending' | 'active' | 'complete';
 }
 
+function renderGeneratedContent(content: string): string {
+  if (!content) return '';
+
+  // First, convert literal \n sequences to actual newlines
+  let html = content.replace(/\\n/g, '\n');
+
+  // Check if content has inline HTML (charts, tables, SVGs from Claude)
+  const hasInlineHTML = /<(?:div|table|svg|span|style|tr|td|th)\b/i.test(html);
+
+  if (hasInlineHTML) {
+    // Split on HTML blocks to preserve them, convert text parts
+    const parts = html.split(/(<(?:div|table|svg|style)[\s\S]*?<\/(?:div|table|svg|style)>)/gi);
+    return parts
+      .map((part) => {
+        if (/^<(?:div|table|svg|style)/i.test(part.trim())) {
+          return part; // HTML block — leave untouched
+        }
+        return convertTextToHTML(part);
+      })
+      .join('');
+  }
+
+  return convertTextToHTML(html);
+}
+
+function convertTextToHTML(text: string): string {
+  if (!text.trim()) return '';
+  return text
+    .replace(/\*\*\*(.*?)\*\*\*/g, '<strong><em>$1</em></strong>')
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+    .replace(/\n\n+/g, '</p><p style="margin:8px 0;line-height:1.6;">')
+    .replace(/\n/g, '<br/>')
+    .replace(/^(.+)/, '<p style="margin:8px 0;line-height:1.6;">$1')
+    .replace(/(.+)$/, '$1</p>');
+}
+
 const ANALYSIS_STAGES: Omit<AnalysisStage, 'status'>[] = [
   { id: 'parse', label: 'Parsing Financial Documents', detail: 'Extracting data from uploaded T-12, rent roll, and supporting files' },
   { id: 'validate', label: 'Validating Data Integrity', detail: 'Cross-referencing line items and verifying month alignment' },
@@ -258,6 +295,9 @@ export default function AIGenerationDisplay({ status, streamText, sections, erro
           <div className="flex items-center gap-6 text-sm text-green-700/70">
             <span>Input: {usage.inputTokens.toLocaleString()} tokens</span>
             <span>Output: {usage.outputTokens.toLocaleString()} tokens</span>
+            <span className="text-green-600 font-medium">
+              {sections.filter(s => s.included).length} sections generated
+            </span>
           </div>
         )}
       </div>
@@ -296,11 +336,8 @@ export default function AIGenerationDisplay({ status, streamText, sections, erro
             </div>
           )}
 
-          <div className="px-6 py-4 prose prose-sm max-w-none text-slate-700" dangerouslySetInnerHTML={{
-            __html: section.content
-              .replace(/\n/g, '<br />')
-              .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-              .replace(/\*(.*?)\*/g, '<em>$1</em>')
+          <div className="px-6 py-4 prose prose-sm max-w-none text-gray-700" dangerouslySetInnerHTML={{
+            __html: renderGeneratedContent(section.content)
           }} />
         </div>
       ))}
@@ -337,3 +374,4 @@ function formatTime(seconds: number): string {
   const s = seconds % 60;
   return m > 0 ? `${m}m ${s}s` : `${s}s`;
 }
+

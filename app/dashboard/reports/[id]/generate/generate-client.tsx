@@ -16,6 +16,163 @@ interface GenerateClientProps {
   propertyName: string;
 }
 
+/**
+ * Robust JSON parser for Claude's report output.
+ * Handles: valid JSON, code-fenced JSON, truncated JSON, and raw text fallback.
+ */
+function parseGeneratedJSON(fullText: string): GeneratedSection[] {
+  // The API uses assistant prefill '{"sections": [' so the streamed
+  // text starts mid-JSON. Prepend the prefill to reconstruct valid JSON.
+  let jsonContent = fullText;
+
+  // Remove code fences if present
+  const fenceMatch = fullText.match(/```(?:json)?\s*\n?([\s\S]+?)```/);
+  if (fenceMatch) {
+    jsonContent = fenceMatch[1].trim();
+  }
+
+  // If the response doesn't start with '{', prepend the prefill
+  const trimmed = jsonContent.trim();
+  if (!trimmed.startsWith('{')) {
+    jsonContent = '{"sections": [' + trimmed;
+  }
+
+  // Try to find the outer JSON object
+  const objStart = jsonContent.indexOf('{');
+  if (objStart >= 0) {
+    jsonContent = jsonContent.slice(objStart);
+  }
+
+  // Step 3: Try full JSON parse
+  try {
+    const parsed = JSON.parse(jsonContent);
+    if (parsed.sections && Array.isArray(parsed.sections) && parsed.sections.length > 0) {
+      return parsed.sections;
+    }
+  } catch {
+    // JSON parse failed — likely truncated. Try recovery.
+  }
+
+  // Step 4: Truncation recovery — extract individual section objects
+  try {
+    const sections: GeneratedSection[] = [];
+    // Match complete section objects: { "id": "...", ... "skipReason": ... }
+    const sectionRegex = /\{\s*"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"metrics"\s*:\s*(\[[\s\S]*?\])\s*,\s*"included"\s*:\s*(true|false)\s*,\s*"skipReason"\s*:\s*(null|"[^"]*")\s*\}/g;
+
+    let match;
+    while ((match = sectionRegex.exec(jsonContent)) !== null) {
+      try {
+        // Parse the full matched section as JSON to handle escaping properly
+        const sectionJSON = match[0];
+        const section = JSON.parse(sectionJSON);
+        sections.push(section);
+      } catch {
+        // If individual section parse fails, build it manually
+        sections.push({
+          id: match[1],
+          title: match[2],
+          content: match[3].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\'),
+          metrics: tryParseArray(match[4]),
+          included: match[5] === 'true',
+          skipReason: match[6] === 'null' ? null : match[6].replace(/^"|"$/g, ''),
+        });
+      }
+    }
+
+    if (sections.length > 0) {
+      return sections;
+    }
+  } catch {
+    // Section extraction failed too
+  }
+
+  // Step 5: Simpler extraction — find section blocks by splitting on "id" patterns
+  try {
+    const sections: GeneratedSection[] = [];
+    const idMatches = [...jsonContent.matchAll(/"id"\s*:\s*"([^"]+)"/g)];
+
+    for (let i = 0; i < idMatches.length; i++) {
+      const idMatch = idMatches[i];
+      const startIdx = jsonContent.lastIndexOf('{', idMatch.index!);
+      const endBound = i < idMatches.length - 1 ? idMatches[i + 1].index! : jsonContent.length;
+
+      // Find the closing brace for this section
+      let braceCount = 0;
+      let endIdx = startIdx;
+      for (let j = startIdx; j < endBound + 200 && j < jsonContent.length; j++) {
+        if (jsonContent[j] === '{') braceCount++;
+        if (jsonContent[j] === '}') braceCount--;
+        if (braceCount === 0 && j > startIdx) {
+          endIdx = j + 1;
+          break;
+        }
+      }
+
+      if (endIdx > startIdx) {
+        try {
+          const sectionStr = jsonContent.slice(startIdx, endIdx);
+          const section = JSON.parse(sectionStr);
+          if (section.id && section.title) {
+            sections.push({
+              id: section.id,
+              title: section.title,
+              content: section.content || '',
+              metrics: Array.isArray(section.metrics) ? section.metrics : [],
+              included: section.included !== false,
+              skipReason: section.skipReason || null,
+            });
+          }
+        } catch {
+          // Skip this section
+        }
+      }
+    }
+
+    if (sections.length > 0) {
+      return sections;
+    }
+  } catch {
+    // All extraction methods failed
+  }
+
+  // Step 6: Final fallback — return as single section with cleaned content
+  // Clean up JSON artifacts so it's at least readable
+  let cleaned = fullText
+    .replace(/```json\s*/g, '')
+    .replace(/```\s*/g, '')
+    .replace(/^\s*\{\s*"sections"\s*:\s*\[\s*/m, '')
+    .replace(/"id"\s*:\s*"[^"]*"\s*,\s*/g, '')
+    .replace(/"title"\s*:\s*"[^"]*"\s*,\s*/g, '')
+    .replace(/"content"\s*:\s*"/g, '')
+    .replace(/",\s*"metrics"\s*:[\s\S]*?"skipReason"\s*:\s*(?:null|"[^"]*")\s*\}\s*,?/g, '\n\n')
+    .replace(/\\n/g, '\n')
+    .replace(/\\"/g, '"')
+    .replace(/\\\\/g, '\\')
+    .trim();
+
+  // If cleaned text is mostly JSON noise, just show a simpler message
+  if (cleaned.length < 50 || cleaned.startsWith('{')) {
+    cleaned = 'Report generation completed but output could not be parsed. Please try regenerating with "Regenerate All".';
+  }
+
+  return [{
+    id: 'executive_summary',
+    title: 'Report',
+    content: cleaned,
+    metrics: [],
+    included: true,
+    skipReason: null,
+  }];
+}
+
+function tryParseArray(str: string): GeneratedSection['metrics'] {
+  try {
+    return JSON.parse(str) || [];
+  } catch {
+    return [];
+  }
+}
+
 export default function GenerateClient({
   reportId, propertyId, selectedMonth, selectedYear, tier,
   distributionStatus, distributionNote, questionnaireAnswers,
@@ -106,7 +263,14 @@ export default function GenerateClient({
             const event = JSON.parse(jsonStr);
             if (event.type === 'text') {
               streamRef.current += event.text;
-              setStreamText(streamRef.current);
+              // Don't show raw JSON to user — show progress indicator
+              const sectionMatches = streamRef.current.match(/"title"\s*:\s*"([^"]+)"/g);
+              if (sectionMatches) {
+                const titles = sectionMatches.map(m => m.match(/"title"\s*:\s*"([^"]+)"/)?.[1] || '');
+                setStreamText(`Generating report...\n\n${titles.map((t, i) => `${i + 1}. ${t} ✓`).join('\n')}\n\nGenerating section ${titles.length + 1}...`);
+              } else {
+                setStreamText('Analyzing financial documents...');
+              }
             } else if (event.type === 'usage') {
               finalUsage = { inputTokens: event.inputTokens, outputTokens: event.outputTokens };
               setUsage(finalUsage);
@@ -114,18 +278,7 @@ export default function GenerateClient({
               throw new Error(event.message);
             } else if (event.type === 'done') {
               const fullText = streamRef.current;
-              let parsedSections: GeneratedSection[] = [];
-              try {
-                let jsonContent = fullText;
-                const match = fullText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-                if (match) jsonContent = match[1];
-                const objMatch = jsonContent.match(/\{[\s\S]*\}/);
-                if (objMatch) jsonContent = objMatch[0];
-                const parsed = JSON.parse(jsonContent);
-                parsedSections = parsed.sections || [];
-              } catch {
-                parsedSections = [{ id: 'executive_summary', title: 'Report', content: fullText, metrics: [], included: true, skipReason: null }];
-              }
+              const parsedSections = parseGeneratedJSON(fullText);
               setSections(parsedSections);
               setStatus('completed');
               // Save to database
@@ -141,19 +294,8 @@ export default function GenerateClient({
       }
 
       // If we exited without 'done' event, still try to parse and save
-      if (streamRef.current && status !== 'completed') {
-        let parsedSections: GeneratedSection[] = [];
-        try {
-          let jsonContent = streamRef.current;
-          const match = streamRef.current.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-          if (match) jsonContent = match[1];
-          const objMatch = jsonContent.match(/\{[\s\S]*\}/);
-          if (objMatch) jsonContent = objMatch[0];
-          const parsed = JSON.parse(jsonContent);
-          parsedSections = parsed.sections || [];
-        } catch {
-          parsedSections = [{ id: 'executive_summary', title: 'Report', content: streamRef.current, metrics: [], included: true, skipReason: null }];
-        }
+      if (status !== 'completed' && streamRef.current) {
+        const parsedSections = parseGeneratedJSON(streamRef.current);
         setSections(parsedSections);
         setStatus('completed');
         await saveGenerationResults(parsedSections, finalUsage || undefined);
@@ -278,3 +420,4 @@ export default function GenerateClient({
     </div>
   );
 }
+

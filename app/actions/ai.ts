@@ -7,10 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { revalidatePath } from 'next/cache'
 import { REPORT_SECTIONS } from '@/lib/report-sections'
 import { parseReportFilesWithAI } from './files'
-import {
-  ExtractedFinancialData,
-  formatFinancialContextForReport
-} from '@/lib/document-intelligence'
+import { ExtractedFinancialData, formatFinancialContextForReport } from '@/lib/document-intelligence'
 
 export type GenerateReportResult = {
   success: boolean
@@ -59,7 +56,7 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       .from('reports')
       .update({
         status: 'generating',
-        updated_at: new Date().toISOString()
+        updated_at: new Date().toISOString(),
       })
       .eq('id', reportId)
       .eq('user_id', userId)
@@ -67,11 +64,13 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
     // 2. Fetch the report with property info and files
     const { data: report, error: reportError } = await supabase
       .from('reports')
-      .select(`
+      .select(
+        `
         *,
         property:properties(*),
         report_files(*)
-      `)
+      `
+      )
       .eq('id', reportId)
       .eq('user_id', userId)
       .single()
@@ -145,9 +144,7 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       )
       console.log(
         'KPIs calculated:',
-        Object.keys(calculatedKPIs).filter(
-          (k) => calculatedKPIs![k as keyof CalculatedKPIs] !== null
-        )
+        Object.keys(calculatedKPIs).filter((k) => calculatedKPIs![k as keyof CalculatedKPIs] !== null)
       )
     }
 
@@ -160,18 +157,14 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       units: report.property?.units,
     }
 
-    const enhancedFreeformNarrative = buildEnhancedContext(
-      financialContext,
-      analysisContext,
-      report.freeform_narrative
-    )
+    const enhancedFreeformNarrative = buildEnhancedContext(financialContext, analysisContext, report.freeform_narrative)
 
     const reportContext: ReportContext = {
       month: report.month,
       year: report.year,
       questionnaire: report.questionnaire || {},
       freeformNarrative: enhancedFreeformNarrative,
-      uploadedFiles: reportFiles.map(f => ({
+      uploadedFiles: reportFiles.map((f) => ({
         name: f.file_name,
         type: f.file_type,
       })),
@@ -185,7 +178,7 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
         .from('reports')
         .update({
           status: 'error',
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .eq('id', reportId)
         .eq('user_id', userId)
@@ -204,11 +197,13 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       const contentWithKPIs = {
         ...result.structuredSections,
         calculatedKPIs: calculatedKPIs,
-        analysisMetadata: analyzedFinancials ? {
-          confidence: analyzedFinancials.verification.confidence,
-          mathVerified: analyzedFinancials.verification.mathVerified,
-          analyzedAt: new Date().toISOString(),
-        } : null,
+        analysisMetadata: analyzedFinancials
+          ? {
+              confidence: analyzedFinancials.verification.confidence,
+              mathVerified: analyzedFinancials.verification.mathVerified,
+              analyzedAt: new Date().toISOString(),
+            }
+          : null,
       }
       updateData.content = contentWithKPIs
     }
@@ -220,11 +215,7 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       }
     }
 
-    await supabase
-      .from('reports')
-      .update(updateData)
-      .eq('id', reportId)
-      .eq('user_id', userId)
+    await supabase.from('reports').update(updateData).eq('id', reportId).eq('user_id', userId)
 
     revalidatePath(`/dashboard/reports/${reportId}`)
 
@@ -232,15 +223,10 @@ export async function generateReport(reportId: string): Promise<GenerateReportRe
       success: true,
       narrative: result.narrative,
     }
-
   } catch (error) {
     console.error('Generate report error:', error)
 
-    await supabase
-      .from('reports')
-      .update({ status: 'error' })
-      .eq('id', reportId)
-      .eq('user_id', userId)
+    await supabase.from('reports').update({ status: 'error' }).eq('id', reportId).eq('user_id', userId)
 
     return {
       success: false,
@@ -283,7 +269,7 @@ Write the full investor report now.`
       messages: [{ role: 'user', content: userPrompt }],
     })
 
-    const textContent = response.content.find(block => block.type === 'text')
+    const textContent = response.content.find((block) => block.type === 'text')
     const narrative = textContent?.type === 'text' ? textContent.text : null
 
     if (!narrative) {
@@ -300,10 +286,7 @@ Write the full investor report now.`
 /**
  * Extract budget values from questionnaire
  */
-function extractBudgetValue(
-  questionnaire: Record<string, unknown> | null,
-  field: string
-): number | undefined {
+function extractBudgetValue(questionnaire: Record<string, unknown> | null, field: string): number | undefined {
   if (!questionnaire) return undefined
 
   const sections = ['expenses', 'revenue', 'financial']
@@ -322,11 +305,7 @@ function extractBudgetValue(
 /**
  * Build enhanced context
  */
-function buildEnhancedContext(
-  financialContext: string,
-  analysisContext: string,
-  freeformNarrative: string | null
-): string {
+function buildEnhancedContext(financialContext: string, analysisContext: string, freeformNarrative: string | null): string {
   const parts: string[] = []
   if (financialContext) parts.push(financialContext)
   if (analysisContext) parts.push('\n' + analysisContext)
@@ -417,10 +396,10 @@ export async function saveSection(
     const currentContent = (report.content as Record<string, unknown>) || { sections: {} }
     const sections = (currentContent.sections as Record<string, unknown>) || {}
 
-    const sectionDef = REPORT_SECTIONS.find(s => s.id === sectionId)
+    const sectionDef = REPORT_SECTIONS.find((s) => s.id === sectionId)
 
     sections[sectionId] = {
-      ...(sections[sectionId] as Record<string, unknown> || {}),
+      ...(((sections[sectionId] as Record<string, unknown>) || {}) as Record<string, unknown>),
       content,
       title: sectionDef?.title || sectionId,
       order: sectionDef?.order || 99,
@@ -444,7 +423,6 @@ export async function saveSection(
 
     revalidatePath(`/dashboard/reports/${reportId}`)
     return { success: true }
-
   } catch (error) {
     console.error('Save section error:', error)
     return { success: false, error: 'Failed to save section' }
@@ -467,10 +445,12 @@ export async function regenerateSection(
   try {
     const { data: report, error: fetchError } = await supabase
       .from('reports')
-      .select(`
+      .select(
+        `
         *,
         property:properties(*)
-      `)
+      `
+      )
       .eq('id', reportId)
       .eq('user_id', userId)
       .single()
@@ -479,7 +459,23 @@ export async function regenerateSection(
       return { success: false, error: 'Report not found' }
     }
 
-    const sectionDef = REPORT_SECTIONS.find(s => s.id === sectionId)
+    // Check both legacy and new section definitions
+    const legacySectionDef = REPORT_SECTIONS.find((s) => s.id === sectionId)
+    const { ALL_SECTIONS: allSections } = await import('@/lib/section-definitions')
+    const newSectionDef = allSections[sectionId as keyof typeof allSections]
+
+    const sectionDef =
+      legacySectionDef ||
+      (newSectionDef
+        ? {
+            id: newSectionDef.id,
+            title: newSectionDef.title,
+            description: newSectionDef.description,
+            required: !newSectionDef.isConditional,
+            order: 99,
+          }
+        : null)
+
     if (!sectionDef) {
       return { success: false, error: 'Invalid section' }
     }
@@ -505,14 +501,43 @@ export async function regenerateSection(
       return { success: false, error: 'Failed to generate section' }
     }
 
-    const saveResult = await saveSection(reportId, sectionId, sectionContent)
+    // Save to BOTH legacy content.sections AND new generated_sections
+    // Legacy save (backward compat)
+    await saveSection(reportId, sectionId, sectionContent)
 
-    if (!saveResult.success) {
-      return { success: false, error: saveResult.error }
+    // New pipeline: update generated_sections array directly
+    try {
+      const { data: currentReport } = await supabase
+        .from('reports')
+        .select('generated_sections')
+        .eq('id', reportId)
+        .eq('user_id', userId)
+        .single()
+
+      if (currentReport?.generated_sections) {
+        const genSections = currentReport.generated_sections as Array<Record<string, unknown>>
+        const updatedSections = genSections.map((s) => {
+          if ((s.id as string) === sectionId) {
+            return { ...s, content: sectionContent }
+          }
+          return s
+        })
+
+        await supabase
+          .from('reports')
+          .update({
+            generated_sections: updatedSections,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', reportId)
+          .eq('user_id', userId)
+      }
+    } catch (err) {
+      console.warn('Could not update generated_sections:', err)
     }
 
+    revalidatePath(`/dashboard/reports/${reportId}`)
     return { success: true, content: sectionContent }
-
   } catch (error) {
     console.error('Regenerate section error:', error)
     return { success: false, error: 'Failed to regenerate section' }
@@ -531,43 +556,117 @@ async function generateSingleSection(
   const Anthropic = (await import('@anthropic-ai/sdk')).default
   const anthropic = new Anthropic()
 
-  const systemPrompt = `You are a senior asset manager at a top-tier multifamily PE firm. 
+  // Try to get the new-style section definition for rich prompt guidance
+  const { ALL_SECTIONS } = await import('@/lib/section-definitions')
+  const { buildSystemPrompt } = await import('@/lib/prompt-templates')
+
+  const newSectionDef = ALL_SECTIONS[section.id as keyof typeof ALL_SECTIONS]
+
+  // Build a proper system prompt with tier, colors, etc.
+  // We don't have full context here, so we fetch user settings
+  const { supabase: supabaseClient } = await import('@/lib/supabase')
+  const { userId } = await auth()
+  let brandColors: { primary: string; secondary: string; accent: string } | undefined
+  let tier = 'professional' // default for regeneration
+
+  if (userId) {
+    const { data: settings } = await supabaseClient
+      .from('user_settings')
+      .select('accent_color, secondary_color')
+      .eq('user_id', userId)
+      .single()
+
+    if (settings) {
+      brandColors = {
+        primary: '#27272A',
+        secondary: settings.secondary_color || '#EFF6FF',
+        accent: settings.accent_color || '#2563EB',
+      }
+    }
+
+    // Try to detect tier from the report's generation_config
+    const { data: reports } = await supabaseClient
+      .from('reports')
+      .select('generation_config')
+      .eq('user_id', userId)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+
+    if (reports?.[0]?.generation_config) {
+      const config = reports[0].generation_config as Record<string, unknown>
+      if (config.tier) tier = config.tier as string
+    }
+  }
+
+  const systemPrompt = newSectionDef
+    ? buildSystemPrompt({
+        tier,
+        propertyName: property.name,
+        propertyAddress: [property.city, property.state].filter(Boolean).join(', ') || undefined,
+        unitCount: property.units || undefined,
+        brandColors,
+      })
+    : `You are a senior asset manager at a top-tier multifamily PE firm.
 Write ONLY the "${section.title}" section of a monthly investor report.
+Requirements: 2-4 paragraphs, professional tone, data-driven, no section header.`
 
-Requirements:
-- 2-4 paragraphs, professional tone
-- Use specific numbers when available
-- Be concise and data-driven
-- No section header in output (just the content)
-- No bullet points - use prose paragraphs`
+  const sectionGuidance = newSectionDef?.promptGuidance || ''
 
-  const userPrompt = `Property: ${property.name}
+  const userPrompt = `Regenerate ONLY the "${section.title}" section.
+
+<property>
+Name: ${property.name}
 Location: ${property.city || 'N/A'}, ${property.state || 'N/A'}
 Units: ${property.units || 'N/A'}
 Period: ${context.month} ${context.year}
+</property>
 
-Section to write: ${section.title}
-Section description: ${section.description}
-
-Context from asset manager:
+<asset_manager_notes>
 ${JSON.stringify(context.questionnaire, null, 2)}
-${context.freeformNarrative ? `\nAdditional notes: ${context.freeformNarrative}` : ''}
+${context.freeformNarrative ? `\nFreeform notes: ${context.freeformNarrative}` : ''}
+</asset_manager_notes>
 
-${instructions ? `\nSpecial instructions: ${instructions}` : ''}
+${sectionGuidance ? `<section_instructions>\n${sectionGuidance}\n</section_instructions>` : ''}
 
-Write the ${section.title} section now:`
+${instructions ? `<user_feedback>${instructions}</user_feedback>` : ''}
+
+<output_format>
+Return valid JSON:
+{
+  "id": "${section.id}",
+  "title": "${section.title}",
+  "content": "Section content with inline HTML charts/tables if appropriate for this tier...",
+  "metrics": [{"label": "...", "value": "...", "change": "...", "changeDirection": "up|down|flat", "vsbudget": "..."}],
+  "included": true,
+  "skipReason": null
+}
+</output_format>`
 
   try {
     const response = await anthropic.messages.create({
       model: process.env.CLAUDE_MODEL || 'claude-sonnet-4-20250514',
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: systemPrompt,
       messages: [{ role: 'user', content: userPrompt }],
     })
 
-    const textContent = response.content.find(block => block.type === 'text')
-    return textContent?.type === 'text' ? textContent.text : null
+    const textContent = response.content.find((block) => block.type === 'text')
+    const rawText = textContent?.type === 'text' ? textContent.text : null
+    if (!rawText) return null
 
+    // Try to parse as JSON and extract content
+    try {
+      let jsonStr = rawText
+      const m = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
+      if (m) jsonStr = m[1]
+      const obj = jsonStr.match(/\{[\s\S]*\}/)
+      if (obj) jsonStr = obj[0]
+      const parsed = JSON.parse(jsonStr)
+      return parsed.content || rawText
+    } catch {
+      // If JSON parse fails, return raw text (plain markdown)
+      return rawText
+    }
   } catch (error) {
     console.error('Generate single section error:', error)
     return null
@@ -577,11 +676,9 @@ Write the ${section.title} section now:`
 /**
  * Rebuild the full narrative from sections
  */
-function rebuildNarrativeFromSections(
-  sections: Record<string, unknown>
-): string {
+function rebuildNarrativeFromSections(sections: Record<string, unknown>): string {
   const orderedSections = REPORT_SECTIONS
-    .map(def => {
+    .map((def) => {
       const section = sections[def.id] as { title?: string; content?: string; order?: number } | undefined
       if (section?.content) {
         return {
@@ -595,17 +692,13 @@ function rebuildNarrativeFromSections(
     .filter(Boolean)
     .sort((a, b) => (a?.order || 0) - (b?.order || 0))
 
-  return orderedSections
-    .map(s => `## ${s?.title}\n\n${s?.content}`)
-    .join('\n\n')
+  return orderedSections.map((s) => `## ${s?.title}\n\n${s?.content}`).join('\n\n')
 }
+
 /**
  * Reorder sections by saving the new order to generated_sections
  */
-export async function reorderSections(
-  reportId: string,
-  orderedSectionIds: string[]
-): Promise<{ success: boolean; error?: string }> {
+export async function reorderSections(reportId: string, orderedSectionIds: string[]): Promise<{ success: boolean; error?: string }> {
   const { userId } = await auth()
   if (!userId) {
     return { success: false, error: 'Unauthorized' }
@@ -624,15 +717,13 @@ export async function reorderSections(
     }
 
     const genSections = (report.generated_sections as Array<Record<string, unknown>>) || []
-    
+
     // Build a map for quick lookup
-    const sectionMap = new Map(genSections.map(s => [s.id as string, s]))
-    
+    const sectionMap = new Map(genSections.map((s) => [s.id as string, s]))
+
     // Reorder: place sections in the order specified by orderedSectionIds
-    const reordered = orderedSectionIds
-      .map(id => sectionMap.get(id))
-      .filter(Boolean) as Array<Record<string, unknown>>
-    
+    const reordered = orderedSectionIds.map((id) => sectionMap.get(id)).filter(Boolean) as Array<Record<string, unknown>>
+
     // Append any sections not in the ordered list (shouldn't happen, but safety)
     for (const s of genSections) {
       if (!orderedSectionIds.includes(s.id as string)) {
@@ -660,13 +751,11 @@ export async function reorderSections(
     return { success: false, error: 'Failed to reorder sections' }
   }
 }
+
 /**
  * Remove (hide) a section from the report
  */
-export async function removeSection(
-  reportId: string,
-  sectionId: string
-): Promise<{ success: boolean; error?: string }> {
+export async function removeSection(reportId: string, sectionId: string): Promise<{ success: boolean; error?: string }> {
   const { userId } = await auth()
   if (!userId) {
     return { success: false, error: 'Unauthorized' }
@@ -685,8 +774,8 @@ export async function removeSection(
     }
 
     const genSections = (report.generated_sections as Array<Record<string, unknown>>) || []
-    
-    const updated = genSections.map(s => {
+
+    const updated = genSections.map((s) => {
       if ((s.id as string) === sectionId) {
         return { ...s, included: false, skipReason: 'Removed by user' }
       }
@@ -713,6 +802,7 @@ export async function removeSection(
     return { success: false, error: 'Failed to remove section' }
   }
 }
+
 /**
  * Add (restore or create blank) a section to the report
  */
@@ -739,15 +829,15 @@ export async function addSection(
     }
 
     const genSections = (report.generated_sections as Array<Record<string, unknown>>) || []
-    
+
     // Check if section already exists (was previously removed)
-    const existingIndex = genSections.findIndex(s => (s.id as string) === sectionId)
-    
+    const existingIndex = genSections.findIndex((s) => (s.id as string) === sectionId)
+
     let updated: Array<Record<string, unknown>>
-    
+
     if (existingIndex >= 0) {
       // Re-include the existing section
-      updated = genSections.map(s => {
+      updated = genSections.map((s) => {
         if ((s.id as string) === sectionId) {
           return { ...s, included: true, skipReason: null }
         }
@@ -788,3 +878,4 @@ export async function addSection(
     return { success: false, error: 'Failed to add section' }
   }
 }
+

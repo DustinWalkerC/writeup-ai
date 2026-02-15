@@ -27,6 +27,7 @@ export async function GET() {
         company_logo_url: null,
         accent_color: '#27272A',
         secondary_color: '#EFF6FF',
+        report_accent_color: '#2563EB',
         ai_tone: 'balanced',
         custom_disclaimer: null,
       }
@@ -58,7 +59,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    const updates = await request.json()
+    // Line 1: destructure POST body (added report_accent_color)
+    const { company_name, accent_color, secondary_color, report_accent_color, ai_tone, custom_disclaimer } =
+      await request.json()
 
     // Check if settings exist
     const { data: existing } = await supabase
@@ -72,7 +75,13 @@ export async function POST(request: NextRequest) {
       const { data, error } = await supabase
         .from('user_settings')
         .update({
-          ...updates,
+          company_name,
+          accent_color,
+          secondary_color,
+          // Line 2: added report_accent_color
+          report_accent_color: report_accent_color || '#2563EB',
+          ai_tone,
+          custom_disclaimer,
           updated_at: new Date().toISOString(),
         })
         .eq('user_id', userId)
@@ -90,7 +99,13 @@ export async function POST(request: NextRequest) {
         .from('user_settings')
         .insert({
           user_id: userId,
-          ...updates,
+          company_name,
+          accent_color,
+          secondary_color,
+          // Line 2: added report_accent_color
+          report_accent_color: report_accent_color || '#2563EB',
+          ai_tone,
+          custom_disclaimer,
         })
         .select()
         .single()
@@ -106,3 +121,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Internal error' }, { status: 500 })
   }
 }
+
+
