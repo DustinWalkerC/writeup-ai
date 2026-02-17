@@ -149,7 +149,6 @@ function renderNarrativeContent(text: string): string {
 }
 
 // ── Metric Card Renderer (table-based for PDF + email) ──
-// page-break-inside:avoid keeps the KPI card row on one page
 
 function renderMetricCards(metrics: GeneratedSection['metrics'], accentColor?: string): string {
   if (!metrics || metrics.length === 0) return ''
@@ -172,13 +171,8 @@ function renderMetricCards(metrics: GeneratedSection['metrics'], accentColor?: s
   return `<table role="presentation" cellpadding="0" cellspacing="8" border="0" data-metrics="true" style="width:100%;border-collapse:separate;margin:16px 0;table-layout:fixed;page-break-inside:avoid;"><tr>${cells}</tr></table>`
 }
 
-// ── Formatted Section Renderer (shared between display + export) ──
-//
-// PAGE BREAK STRATEGY (inline CSS for html2pdf's 'css' mode):
-//   • <h2> headers: page-break-after:avoid → keeps header with next content
-//   • metric <table>: page-break-inside:avoid → KPI row stays on one page
-//   • chart <div>: page-break-inside:avoid → chart stays on one page
-//   • data tables inside charts are also protected via the chart wrapper
+// ── Formatted Section Renderer ─────────────────────────────────
+// Inline page-break CSS + data attributes for the @media print rules
 
 function renderFormattedSections(
   orderedSections: Array<{
@@ -195,29 +189,23 @@ function renderFormattedSections(
 
     let html = `<div data-section="${section.id}" style="margin-bottom:36px;">`
 
-    // Report header chart for first section
     if (chartHTML && idx === 0) {
       html += `<div data-chart="header" style="margin-bottom:24px;width:100%;overflow:hidden;page-break-inside:avoid;">${chartHTML}</div>`
     }
 
-    // Section Title — page-break-after:avoid keeps header with content below
     html += `<h2 style="font-size:19px;font-weight:700;color:#0f172a;margin-bottom:14px;padding-bottom:8px;border-bottom:${idx === 0 ? 'none' : `2px solid ${accentColor}20`};display:flex;align-items:center;gap:10px;page-break-after:avoid;">
       <span style="display:inline-block;width:4px;height:20px;background:${accentColor};border-radius:2px;flex-shrink:0;"></span>
       ${section.title}
     </h2>`
 
-    // KPI Metric Cards (skip first section — header has KPIs)
-    // page-break-inside:avoid is set inside renderMetricCards()
     if (idx !== 0 && section.metrics && section.metrics.length > 0) {
       html += renderMetricCards(section.metrics, accentColor)
     }
 
-    // Narrative
     if (narrative) {
       html += `<div style="font-size:14px;line-height:1.7;color:#334155;">${renderNarrativeContent(narrative)}</div>`
     }
 
-    // Chart HTML for non-first sections — page-break-inside:avoid keeps chart together
     if (chartHTML && idx !== 0) {
       html += `<div data-chart="${section.id}" style="margin-top:20px;width:100%;overflow:hidden;page-break-inside:avoid;">${chartHTML}</div>`
     }
@@ -439,7 +427,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       showStatus('PDF downloaded')
     } catch (error) {
       console.error('PDF export error:', error)
-      showStatus('Export failed')
+      showStatus('Export failed — check console')
     } finally {
       setIsExporting(false)
     }
@@ -660,14 +648,16 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         )}
       </div>
 
-      {/* ═══ ALWAYS-PRESENT EXPORT CONTAINER ═══ */}
+      {/* ═══ EXPORT CONTAINER ═══
+          Hidden off-screen. Puppeteer doesn't need viewport tricks —
+          we just read innerHTML and send it to the API route.
+          Kept at 800px to match approximate letter printable width. */}
       <div
-        className="export-offscreen-wrapper"
         style={{
           position: 'fixed',
           left: '-9999px',
           top: 0,
-          width: '750px',
+          width: '800px',
           pointerEvents: 'none',
           background: '#ffffff',
         }}
@@ -676,14 +666,12 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         <div
           ref={exportRef}
           style={{
-            width: '750px',
+            width: '800px',
             boxSizing: 'border-box',
-            padding: '32px 24px',
+            padding: '0 16px',
             fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
             background: '#ffffff',
             color: '#1e293b',
-            overflow: 'hidden',
-            wordWrap: 'break-word',
           }}
         >
           {exportHTML ? (
@@ -715,4 +703,3 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     </div>
   )
 }
-

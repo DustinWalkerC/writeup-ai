@@ -1,8 +1,171 @@
 /**
- * Export utilities for generating PDF, email-safe HTML, and clipboard operations
+ * Export utilities for PDF, HTML, and email clipboard operations.
+ *
+ * PDF STRATEGY (Puppeteer):
+ * Instead of html2canvas → jsPDF (which misrenders flex, clips offscreen
+ * elements, and ignores page-break CSS), we now:
+ *   1. Build a complete HTML document with @media print styles
+ *   2. POST it to /api/export-pdf
+ *   3. Headless Chrome renders it with its native print engine
+ *   4. Download the returned PDF blob
+ *
+ * Chrome's print engine correctly handles:
+ *   - page-break-inside: avoid (charts, tables, KPI cards)
+ *   - page-break-after: avoid (section headers)
+ *   - Background colors (printBackground: true)
+ *   - Flexbox, grid, SVG charts
  */
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
+
+// ── PDF Export ──────────────────────────────────────────────────
+
+/**
+ * Build a complete, self-contained HTML document for Puppeteer to render.
+ * Includes @page margins and @media print rules for clean page breaks.
+ */
+export function buildPrintHTML(bodyContent: string): string {
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    /* Base reset */
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+                   'Helvetica Neue', Arial, sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #1e293b;
+      background: #ffffff;
+      -webkit-print-color-adjust: exact !important;
+      print-color-adjust: exact !important;
+      color-adjust: exact !important;
+    }
+
+    /* Page margins — Puppeteer also sets these, but belt-and-suspenders */
+    @page {
+      size: letter;
+      margin: 0.5in;
+    }
+
+    /* ═══ PRINT PAGE BREAK RULES ═══
+       Chrome's print engine respects these perfectly. */
+
+    /* Section headers: never orphan at bottom of page */
+    h2 {
+      page-break-after: avoid !important;
+      break-after: avoid !important;
+    }
+
+    /* KPI metric tables: keep entire row on one page */
+    table[data-metrics] {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    /* Chart containers: never split a chart across pages */
+    [data-chart] {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    /* Data tables (revenue components, expense summary): keep together */
+    table {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    /* SVG charts: keep together */
+    svg {
+      page-break-inside: avoid !important;
+      break-inside: avoid !important;
+    }
+
+    /* Each section wrapper: prefer not to break inside, but allow if too tall */
+    [data-section] {
+      page-break-inside: auto;
+      break-inside: auto;
+    }
+
+    /* Section title + first content block: keep together */
+    [data-section] > h2 + * {
+      page-break-before: avoid !important;
+      break-before: avoid !important;
+    }
+
+    /* Images: constrain and keep together */
+    img {
+      max-width: 100%;
+      height: auto;
+      page-break-inside: avoid !important;
+    }
+  </style>
+</head>
+<body>
+  <div style="max-width: 100%; margin: 0 auto;">
+    ${bodyContent}
+  </div>
+</body>
+</html>`
+}
+
+/**
+ * Generate PDF via the Puppeteer API route.
+ * Falls back to window.print() if the API is unavailable.
+ */
+export async function generatePDF(element: HTMLElement, filename: string): Promise<void> {
+  const bodyContent = element.innerHTML
+
+  // Build complete HTML document with print styles
+  const fullHTML = buildPrintHTML(bodyContent)
+
+  try {
+    const response = await fetch('/api/export-pdf', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ html: fullHTML }),
+    })
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}))
+      throw new Error(errorData.error || `PDF generation failed (${response.status})`)
+    }
+
+    // Download the PDF blob
+    const blob = await response.blob()
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = filename
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  } catch (err) {
+    console.error('Puppeteer PDF failed, falling back to window.print():', err)
+
+    // Fallback: open in new window and trigger print dialog
+    const printWindow = window.open('', '_blank')
+    if (printWindow) {
+      printWindow.document.write(fullHTML)
+      printWindow.document.close()
+      printWindow.onload = () => {
+        printWindow.print()
+      }
+    } else {
+      throw new Error('PDF generation failed and popup was blocked. Please allow popups and try again.')
+    }
+  }
+}
+
+// ── HTML Export ──────────────────────────────────────────────────
 
 /**
  * Generate a standalone HTML document from report content
@@ -18,73 +181,30 @@ export function generateStandaloneHTML(
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${escapeHtml(title)}</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif;
+      line-height: 1.6;
+      color: #1e293b;
+      background: #ffffff;
+      padding: 40px;
+      max-width: 800px;
+      margin: 0 auto;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    @media print {
+      body { padding: 0; }
+      h2 { page-break-after: avoid; }
+      table, [data-chart], [data-metrics], svg { page-break-inside: avoid; }
+    }
+  </style>
 </head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Arial, sans-serif; line-height: 1.6; color: #1e293b; background: #ffffff; padding: 40px; max-width: 800px; margin: 0 auto;">
+<body>
 ${content}
 </body>
 </html>`
-}
-
-/**
- * PDF EXPORT WIDTH
- * Letter paper = 8.5" wide, 0.5" margins each side = 7.5" printable = ~750px.
- */
-const PDF_CONTENT_WIDTH = 750
-
-/**
- * Generate PDF from an HTML element.
- * Temporarily moves the off-screen export container into the viewport
- * so html2canvas can render it correctly.
- */
-export async function generatePDF(element: HTMLElement, filename: string): Promise<void> {
-  const html2pdfModule = await import('html2pdf.js')
-  const html2pdf = html2pdfModule.default as any
-
-  // Move wrapper into viewport for html2canvas
-  const wrapper = element.parentElement
-  const savedWrapperStyle = wrapper?.getAttribute('style') || ''
-
-  if (wrapper) {
-    wrapper.style.cssText =
-      `position:fixed;left:0;top:0;width:${PDF_CONTENT_WIDTH}px;z-index:-9999;pointer-events:none;background:#fff;`
-  }
-
-  // Force the inner element to match
-  const savedElementWidth = element.style.width
-  element.style.width = `${PDF_CONTENT_WIDTH}px`
-
-  await new Promise(r => setTimeout(r, 200))
-
-  const opt = {
-    margin: [0.5, 0.5, 0.5, 0.5],
-    filename: filename,
-    image: { type: 'jpeg', quality: 0.98 },
-    html2canvas: {
-      scale: 2,
-      useCORS: true,
-      letterRendering: true,
-      scrollX: 0,
-      scrollY: 0,
-      width: PDF_CONTENT_WIDTH,
-      windowWidth: PDF_CONTENT_WIDTH,
-    },
-    jsPDF: {
-      unit: 'in',
-      format: 'letter',
-      orientation: 'portrait',
-    },
-    pagebreak: {
-      mode: ['css', 'legacy'],
-      avoid: ['[data-metrics]', '[data-chart]', 'table', 'tr', 'svg'],
-    },
-  }
-
-  try {
-    await html2pdf().set(opt).from(element).save()
-  } finally {
-    element.style.width = savedElementWidth
-    if (wrapper) wrapper.style.cssText = savedWrapperStyle
-  }
 }
 
 /**
@@ -102,16 +222,14 @@ export function downloadHTML(html: string, filename: string): void {
   URL.revokeObjectURL(url)
 }
 
+// ── Email HTML ──────────────────────────────────────────────────
+
 /**
  * Build email-safe HTML from the report element.
  *
  * Light-touch approach: only constrains widths and makes images responsive.
- * Does NOT convert flex layouts — the header and section KPIs render fine
- * in Gmail/Apple Mail/Outlook.com with inline flex styles.
- *
- * The only targeted fix: shrink min-width on the header KPI row children
- * so they wrap to 2-3 per row in narrow email compose windows instead of
- * stacking 1 per row.
+ * Targeted fix: shrink min-width on header KPI cards so they wrap 2-3 per
+ * row in narrow email compose windows instead of stacking 1 per row.
  */
 export function buildEmailSafeHTML(element: HTMLElement): string {
   const clone = element.cloneNode(true) as HTMLElement
@@ -128,10 +246,7 @@ export function buildEmailSafeHTML(element: HTMLElement): string {
     ;(el as HTMLElement).style.overflowX = 'auto'
   })
 
-  // Targeted fix: find the header KPI row (the first flex row inside
-  // data-chart="header" that has 3+ children with min-width set).
-  // Reduce min-width from ~140px to 100px so they wrap 2-3 per row
-  // in narrow email compose windows (~550px) instead of 1 per row.
+  // Targeted fix: find the header KPI row and reduce min-width
   const headerChart = clone.querySelector('[data-chart="header"]')
   if (headerChart) {
     const allDivs = Array.from(headerChart.querySelectorAll('div'))
@@ -140,17 +255,15 @@ export function buildEmailSafeHTML(element: HTMLElement): string {
       if ((style.includes('display:flex') || style.includes('display: flex')) && style.includes('gap')) {
         const children = Array.from(div.children) as HTMLElement[]
         if (children.length >= 3) {
-          // Shrink min-width on each KPI card so they can wrap
           children.forEach(child => {
             const childStyle = child.getAttribute('style') || ''
             const updated = childStyle.replace(/min-width:\s*\d+px/gi, 'min-width:100px')
             child.setAttribute('style', updated)
           })
-          // Ensure the flex container wraps
           if (!style.includes('flex-wrap')) {
             div.setAttribute('style', `${style}; flex-wrap:wrap;`)
           }
-          break // Only fix the first KPI row in the header
+          break
         }
       }
     }
@@ -160,6 +273,8 @@ export function buildEmailSafeHTML(element: HTMLElement): string {
 ${clone.innerHTML}
 </div>`
 }
+
+// ── Clipboard Operations ────────────────────────────────────────
 
 /**
  * Copy rich email-safe HTML to clipboard
@@ -209,6 +324,8 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
   return copyToClipboard(text)
 }
 
+// ── Filename Generation ─────────────────────────────────────────
+
 function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
@@ -252,6 +369,7 @@ export function generateFilenameFromTemplate(
   const sanitized = filename.replace(/[<>:"/\\|?*]/g, '').trim()
   return `${sanitized}.${format}`
 }
+
 
 
 
