@@ -59,9 +59,16 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Line 1: destructure POST body (added report_accent_color)
-    const { company_name, accent_color, secondary_color, report_accent_color, ai_tone, custom_disclaimer } =
-      await request.json()
+    const {
+      company_name,
+      accent_color,
+      secondary_color,
+      report_accent_color,
+      ai_tone,
+      custom_disclaimer,
+      report_template,
+      export_name_template,
+    } = await request.json()
 
     // Check if settings exist
     const { data: existing } = await supabase
@@ -71,19 +78,22 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (existing) {
-      // Update
+      const updateData: Record<string, unknown> = {
+        updated_at: new Date().toISOString(),
+      }
+      // Only include fields that were sent (allows partial updates)
+      if (company_name !== undefined) updateData.company_name = company_name
+      if (accent_color !== undefined) updateData.accent_color = accent_color
+      if (secondary_color !== undefined) updateData.secondary_color = secondary_color
+      if (report_accent_color !== undefined) updateData.report_accent_color = report_accent_color || '#2563EB'
+      if (ai_tone !== undefined) updateData.ai_tone = ai_tone
+      if (custom_disclaimer !== undefined) updateData.custom_disclaimer = custom_disclaimer
+      if (report_template !== undefined) updateData.report_template = report_template
+      if (export_name_template !== undefined) updateData.export_name_template = export_name_template
+
       const { data, error } = await supabase
         .from('user_settings')
-        .update({
-          company_name,
-          accent_color,
-          secondary_color,
-          // Line 2: added report_accent_color
-          report_accent_color: report_accent_color || '#2563EB',
-          ai_tone,
-          custom_disclaimer,
-          updated_at: new Date().toISOString(),
-        })
+        .update(updateData)
         .eq('user_id', userId)
         .select()
         .single()
@@ -102,10 +112,11 @@ export async function POST(request: NextRequest) {
           company_name,
           accent_color,
           secondary_color,
-          // Line 2: added report_accent_color
           report_accent_color: report_accent_color || '#2563EB',
           ai_tone,
           custom_disclaimer,
+          report_template: report_template || null,
+          export_name_template: export_name_template || null,
         })
         .select()
         .single()
@@ -121,5 +132,3 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: false, error: 'Internal error' }, { status: 500 })
   }
 }
-
-

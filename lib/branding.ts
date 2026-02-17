@@ -65,6 +65,12 @@ export const COLOR_PRESETS: Record<string, ColorPreset> = {
     secondary: '#FEF9E7',
     accent: '#C9A84C',
   },
+  navyCrimson: {
+    name: 'Executive Navy & Crimson',
+    primary: '#002D5F',
+    secondary: '#F8FAFC',
+    accent: '#CC0000',
+  },
   slateEmerald: {
     name: 'Slate & Emerald',
     primary: '#334155',

@@ -163,11 +163,8 @@ export const SECTION_LENGTH = {
  * Institutional = all charts including comparison tables.
  */
 export const CHART_ACCESS = {
-  foundational: [
-    'kpi_strip',
-  ],
+  foundational: [] as const,
   professional: [
-    'kpi_strip',
     'budget_variance_table',
     'revenue_waterfall',
     'expense_horizontal_bars',
@@ -176,9 +173,8 @@ export const CHART_ACCESS = {
     'rent_roll_table',
     'risk_cards',
     'move_in_out_bars',
-  ],
+  ] as const,
   institutional: [
-    'kpi_strip',
     'budget_variance_table',
     'revenue_waterfall',
     'expense_horizontal_bars',
@@ -188,7 +184,7 @@ export const CHART_ACCESS = {
     'risk_cards',
     'move_in_out_bars',
     'comparison_table',
-  ],
+  ] as const,
 } as const;
 
 /**
@@ -196,28 +192,28 @@ export const CHART_ACCESS = {
  * Claude references this to decide what chart to generate.
  */
 export const SECTION_CHART_MAP: Record<string, string[]> = {
-  executive_summary:             ['kpi_strip'],
-  revenue_summary:               ['kpi_strip', 'budget_variance_table'],
-  expense_summary:               ['kpi_strip', 'budget_variance_table'],
-  revenue_analysis:              ['kpi_strip', 'revenue_waterfall'],
-  expense_analysis:              ['kpi_strip', 'expense_horizontal_bars'],
-  occupancy_leasing:             ['kpi_strip', 'occupancy_gauge', 'move_in_out_bars'],
-  noi_performance:               ['kpi_strip', 'noi_trend_bars'],
-  rent_roll_insights:            ['kpi_strip', 'rent_roll_table'],
-  rent_roll_deep_dive:           ['kpi_strip', 'rent_roll_table'],
+  executive_summary:             [],
+  revenue_summary:               ['budget_variance_table'],
+  expense_summary:               ['budget_variance_table'],
+  revenue_analysis:              ['revenue_waterfall'],
+  expense_analysis:              ['expense_horizontal_bars'],
+  occupancy_leasing:             ['occupancy_gauge', 'move_in_out_bars'],
+  noi_performance:               ['noi_trend_bars'],
+  rent_roll_insights:            ['rent_roll_table'],
+  rent_roll_deep_dive:           ['rent_roll_table'],
   risk_watch_items:              ['risk_cards'],
   risk_matrix:                   ['risk_cards'],
   budget_vs_actual:              ['budget_variance_table'],
-  market_positioning:            ['kpi_strip', 'comparison_table'],
-  market_submarket_analysis:     ['kpi_strip', 'comparison_table'],
-  capital_improvements:          ['kpi_strip'],
-  capital_improvements_tracker:  ['kpi_strip'],
-  investment_thesis_update:      ['kpi_strip'],
-  lease_expiration_rollover:     ['kpi_strip', 'comparison_table'],
-  asset_manager_outlook:         ['kpi_strip'],
-  asset_manager_strategic_outlook:['kpi_strip'],
-  resident_operational_metrics:  ['kpi_strip', 'comparison_table'],
-  regulatory_compliance:         ['kpi_strip'],
+  market_positioning:            ['comparison_table'],
+  market_submarket_analysis:     ['comparison_table'],
+  capital_improvements:          [],
+  capital_improvements_tracker:  [],
+  investment_thesis_update:      [],
+  lease_expiration_rollover:     ['comparison_table'],
+  asset_manager_outlook:         [],
+  asset_manager_strategic_outlook:[],
+  resident_operational_metrics:  ['comparison_table'],
+  regulatory_compliance:         [],
 };
 
 // ═══════════════════════════════════════════════════════════

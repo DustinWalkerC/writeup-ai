@@ -216,8 +216,8 @@ Keep narrative brief: 2-3 sentences per section. Focus on headline numbers.
 ${params.tier === 'professional' ? `<instructions>
 Polished 10-section report with inline HTML charts using the templates provided.
 Balance narrative with visual data presentation. 3-5 sentences per section.
-Charts help investors scan the report quickly — use them to replace paragraphs of numbers.
-After a chart, write 1-2 sentences of insight, not a re-description of chart data.
+Charts go in the "chart_html" field, NOT in "content". After describing the data trend in "content",
+the chart visual appears separately below. Write 1-2 sentences of insight, not a re-description of chart data.
 </instructions>` : ''}
 ${params.tier === 'institutional' ? `<instructions>
 Comprehensive institutional-grade report with up to 15 sections and premium visualizations.
@@ -298,7 +298,8 @@ Your response must start with { and end with }.
     {
       "id": "section_id",
       "title": "Section Title",
-      "content": "Narrative text with inline HTML charts from templates...",
+      "content": "Narrative text ONLY — no HTML charts, no styled divs. Plain text with optional <strong> for emphasis and <br/> for line breaks.",
+      "chart_html": "<div>...full HTML chart from templates...</div>",
       "metrics": [{"label": "Name", "value": "$X", "change": "+X%", "changeDirection": "up", "vsbudget": "+X%"}],
       "included": true,
       "skipReason": null
@@ -310,6 +311,22 @@ Your response must start with { and end with }.
     "data_quality_notes": ["any issues"]
   }
 }
+
+CRITICAL FIELD SEPARATION:
+- "content" = NARRATIVE TEXT ONLY. No <div>, <table>, <svg>, or styled HTML.
+  The content field feeds directly into an editable text area. It must be clean prose.
+  Allowed tags: <strong>, <em>, <br/>, <p>. Nothing else.
+- "chart_html" = ALL visual HTML (charts, tables, visualizations from templates).
+  If the section has no chart template assigned, set chart_html to "" (empty string).
+  Chart HTML renders in a read-only panel below the narrative. It is NOT editable.
+- "metrics" = KPI data for the compact metric strip rendered by the viewer component.
+  Do NOT generate kpi_strip HTML — the viewer handles metric card rendering automatically.
+
+CRITICAL SECTION ORDER:
+- The "sections" array MUST preserve the EXACT order from <sections_to_generate>.
+- Sections are numbered (order="1", order="2", etc.). Your response array index must match.
+- Do NOT rearrange, reorder, or sort sections by any other criteria.
+- The user has specifically configured this order in their settings. Changing it breaks their report layout.
 
 The "sections" array MUST contain one object for EVERY section in the <sections_to_generate> block.
 Generate ALL sections in a single response. Do NOT stop after the first section.
@@ -381,22 +398,25 @@ ${params.distributionNote ? `<note>${params.distributionNote}</note>` : ''}
 </distribution_status>\n\n`;
   }
 
-  // ── Sections to generate ──
+  // ── Sections to generate — EXPLICITLY NUMBERED for order enforcement ──
   const activeSections = params.sections.filter(s => !params.sectionsToSkip.includes(s.id));
   const skippedSections = params.sections.filter(s => params.sectionsToSkip.includes(s.id));
 
-  prompt += `<sections_to_generate>\n`;
-  for (const section of activeSections) {
-    prompt += `<section id="${section.id}" title="${section.title}" visualizations="${section.visualizations}">
+  prompt += `<sections_to_generate>
+IMPORTANT: Generate sections in EXACTLY this order. The order numbers below are the user's configured report layout.
+Do NOT rearrange sections. Section order="1" must be first in the response array, order="2" second, etc.\n\n`;
+  for (let i = 0; i < activeSections.length; i++) {
+    const section = activeSections[i];
+    prompt += `<section order="${i + 1}" id="${section.id}" title="${section.title}" visualizations="${section.visualizations}">
 Refer to section_guidance id="${section.id}" in the system prompt for analysis instructions.
 </section>\n\n`;
   }
   prompt += `</sections_to_generate>\n\n`;
 
-  // Pre-skipped sections (include as not-included in response)
+  // Pre-skipped sections (include as not-included in response, AFTER active sections)
   if (skippedSections.length > 0) {
     prompt += `<pre_skipped_sections>
-These sections were skipped due to missing data. Include them in your response with "included": false.
+These sections were skipped due to missing data. Include them AFTER all active sections in your response with "included": false.
 ${skippedSections.map(s => `- ${s.id}: "${s.title}"`).join('\n')}
 </pre_skipped_sections>\n\n`;
   }
@@ -407,6 +427,7 @@ ${skippedSections.map(s => `- ${s.id}: "${s.title}"`).join('\n')}
 <instruction>Replace all {{COLOR}} tokens in chart HTML with values from <brand_colors>.</instruction>
 <instruction>Return a SINGLE JSON with ALL ${params.sections.length} sections (${activeSections.length} active + ${skippedSections.length} skipped).</instruction>
 <instruction>STOP AT NOI. No debt service, capex, or distributions unless the asset manager mentioned them.</instruction>
+<instruction>The "sections" array MUST match the EXACT order from <sections_to_generate> (order 1 first, order 2 second, etc.). The user configured this order — do NOT change it.</instruction>
 </final_instructions>`;
 
   return prompt;
@@ -442,7 +463,8 @@ Respond with ONLY a JSON object. No markdown fences, no preamble.
 {
   "id": "${params.sectionId}",
   "title": "${params.sectionTitle}",
-  "content": "Updated content with any inline HTML charts/tables...",
+  "content": "Narrative text only — no HTML charts.",
+  "chart_html": "HTML chart visualizations (empty string if none).",
   "metrics": [...],
   "included": true,
   "skipReason": null
@@ -520,7 +542,8 @@ Your response must start with { and end with }.
     {
       "id": "section_id",
       "title": "Section Title",
-      "content": "Narrative with optional inline HTML charts...",
+      "content": "Narrative text ONLY — no HTML charts. Plain text with <strong> for emphasis.",
+      "chart_html": "HTML charts from templates go here. Empty string if no chart.",
       "metrics": [{"label": "Name", "value": "$X", "change": "+X%", "changeDirection": "up", "vsbudget": "+X%"}],
       "included": true,
       "skipReason": null
@@ -532,6 +555,10 @@ Your response must start with { and end with }.
     "data_quality_notes": ["any issues"]
   }
 }
+
+CRITICAL: The "sections" array MUST preserve the EXACT order from <sections_to_generate>.
+Sections are numbered. Your response array index must match the order numbers.
+Do NOT rearrange or sort sections.
 
 Generate ALL sections listed in <sections_to_generate>. Do NOT stop after the first section.
 For sections with insufficient data: set "included": false with a "skipReason".
@@ -580,9 +607,12 @@ export function buildAnalysisPrompt(params: {
     prompt += `<distribution_status><status>${params.distributionStatus}</status>${params.distributionNote ? `<note>${params.distributionNote}</note>` : ''}</distribution_status>\n\n`;
   }
 
-  prompt += `<sections_to_generate>\n`;
-  for (const section of params.sections) {
-    prompt += `<section id="${section.id}" title="${section.title}" conditional="${section.isConditional}" visualizations="${section.visualizations}">\n${section.promptGuidance}\n</section>\n\n`;
+  // ── Sections — EXPLICITLY NUMBERED for order enforcement ──
+  prompt += `<sections_to_generate>
+IMPORTANT: Generate sections in EXACTLY this order. Do NOT rearrange.\n\n`;
+  for (let i = 0; i < params.sections.length; i++) {
+    const section = params.sections[i];
+    prompt += `<section order="${i + 1}" id="${section.id}" title="${section.title}" conditional="${section.isConditional}" visualizations="${section.visualizations}">\n${section.promptGuidance}\n</section>\n\n`;
   }
   prompt += `</sections_to_generate>\n\n`;
 
@@ -591,9 +621,10 @@ export function buildAnalysisPrompt(params: {
 <instruction>Calculate variances against the prior month column and budget column if available.</instruction>
 <instruction>Return a SINGLE JSON response containing ALL ${params.sections.length} sections. Do NOT stop after the first section.</instruction>
 <instruction>For conditional sections with no supporting data, set "included": false with a clear "skipReason".</instruction>
-<instruction>Charts and tables go in the "content" field as inline HTML. KPI metrics go in the "metrics" array.</instruction>
+<instruction>Charts and tables go in the "chart_html" field as inline HTML. KPI metrics go in the "metrics" array.</instruction>
 <instruction>STOP AT NOI. Do not calculate or reference debt service, capex, or distributions unless the asset manager explicitly provided that data.</instruction>
 <instruction>Your response must be a complete JSON object with a "sections" array containing exactly ${params.sections.length} section objects and an "analysis_summary" object.</instruction>
+<instruction>The "sections" array MUST match the EXACT order from <sections_to_generate> (order 1 first, order 2 second, etc.). Do NOT reorder sections.</instruction>
 </final_instructions>`;
 
   return prompt;

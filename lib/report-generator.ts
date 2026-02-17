@@ -8,12 +8,65 @@ import {
   buildNarrativeSystemPrompt,
   buildNarrativeUserPrompt,
 } from './prompt-templates';
-import { getSectionsForTier, ALL_SECTIONS, SectionId } from './section-definitions';
+import { getSectionsForTier, ALL_SECTIONS, TIER_SECTIONS, SectionId } from './section-definitions';
 import { generateReport, generateReportStream } from './claude';
 import { resolveBrandColors } from './chart-templates/index';
 import { validateExtractedData, getSkipReason } from './data-validator';
 import type { ExtractedFinancialData } from './extraction-schema';
 import { getModelConfig, getLegacyMaxTokens } from './generation-config';
+
+/**
+ * Get sections for a user — checks user_settings.report_template first,
+ * falls back to tier defaults if not configured.
+ */
+async function getSectionsForUser(userId: string, tier: string) {
+  try {
+    const { data: settings } = await supabase
+      .from('user_settings')
+      .select('report_template')
+      .eq('user_id', userId)
+      .single();
+
+    if (settings?.report_template && Array.isArray(settings.report_template) && settings.report_template.length > 0) {
+      // Validate that all section IDs exist and are within the user's tier
+      const tierSections = new Set(getAllAvailableSectionsForTier(tier));
+      const validIds = (settings.report_template as string[]).filter(
+        (id) => ALL_SECTIONS[id as SectionId] && tierSections.has(id as SectionId)
+      ) as SectionId[];
+
+      if (validIds.length > 0) {
+        return validIds.map((id) => ALL_SECTIONS[id]);
+      }
+    }
+  } catch {
+    // Fall through to defaults
+  }
+
+  // Fallback: tier defaults
+  return getSectionsForTier(tier);
+}
+
+/**
+ * Get all section IDs available for a tier (including lower tiers).
+ * Used for validation — ensures users can't enable sections above their tier.
+ */
+function getAllAvailableSectionsForTier(tier: string): SectionId[] {
+  const tiers: string[] = ['foundational'];
+  if (tier === 'professional' || tier === 'institutional') tiers.push('professional');
+  if (tier === 'institutional') tiers.push('institutional');
+
+  const seen = new Set<SectionId>();
+  const result: SectionId[] = [];
+  for (const t of tiers) {
+    for (const id of TIER_SECTIONS[t] || []) {
+      if (!seen.has(id)) {
+        seen.add(id);
+        result.push(id);
+      }
+    }
+  }
+  return result;
+}
 
 // ═══════════════════════════════════════════════════════════
 // Feature flag — set USE_CORE_PIPELINE=true in .env.local to enable
@@ -40,6 +93,7 @@ export interface GeneratedSection {
   id: string;
   title: string;
   content: string;
+  chart_html?: string;
   metrics: Array<{
     label: string;
     value: string;
@@ -118,7 +172,7 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
   try {
     const sections: GeneratedSection[] = [];
     const sectionRegex =
-      /\{\s*"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*"metrics"\s*:\s*(\[[\s\S]*?\])\s*,\s*"included"\s*:\s*(true|false)\s*,\s*"skipReason"\s*:\s*(null|"[^"]*")\s*\}/g;
+      /\{\s*"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*(?:"chart_html"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*)?"metrics"\s*:\s*(\[[\s\S]*?\])\s*,\s*"included"\s*:\s*(true|false)\s*,\s*"skipReason"\s*:\s*(null|"[^"]*")\s*\}/g;
 
     let match: RegExpExecArray | null;
     while ((match = sectionRegex.exec(jsonContent)) !== null) {
@@ -129,9 +183,10 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
           id: match[1],
           title: match[2],
           content: match[3].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\'),
-          metrics: tryParseArray(match[4]),
-          included: match[5] === 'true',
-          skipReason: match[6] === 'null' ? null : match[6].replace(/^"|"$/g, ''),
+          chart_html: match[4] ? match[4].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\') : '',
+          metrics: tryParseArray(match[5]),
+          included: match[6] === 'true',
+          skipReason: match[7] === 'null' ? null : match[7].replace(/^"|"$/g, ''),
         });
       }
     }
@@ -156,6 +211,7 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
         id: 'executive_summary',
         title: 'Report',
         content: fullText,
+        chart_html: '',
         metrics: [],
         included: true,
         skipReason: null,
@@ -191,6 +247,7 @@ function parseRegeneratedSection(resultText: string, fallback: GeneratedSection)
         id: obj.id,
         title: obj.title,
         content: obj.content || '',
+        chart_html: obj.chart_html || '',
         metrics: Array.isArray(obj.metrics) ? obj.metrics : [],
         included: obj.included !== false,
         skipReason: obj.skipReason ?? null,
@@ -254,7 +311,7 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
   const { data: property } = await supabase.from('properties').select('*').eq('id', input.propertyId).single();
   const { data: settings } = await supabase.from('user_settings').select('*').eq('user_id', input.userId).single();
 
-  const sections = getSectionsForTier(input.tier);
+  const sections = await getSectionsForUser(input.userId, input.tier);
   const brandColors = resolveBrandColors(settings || {});
 
   // ── 2. T-12 validation ──
@@ -355,7 +412,11 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
   });
 
   // Get freeform narrative from report
-  const { data: reportData } = await supabase.from('reports').select('freeform_narrative').eq('id', input.reportId).single();
+  const { data: reportData } = await supabase
+    .from('reports')
+    .select('freeform_narrative')
+    .eq('id', input.reportId)
+    .single();
 
   const narrativeUserPrompt = buildNarrativeUserPrompt({
     extractedDataJson: JSON.stringify(validationResult.corrected, null, 2),
@@ -449,7 +510,7 @@ async function buildLegacyPrompts(input: ReportGenerationInput, fileContents: Re
       : undefined,
   });
 
-  const sections = getSectionsForTier(input.tier);
+  const sections = await getSectionsForUser(input.userId, input.tier);
 
   const userPrompt = buildAnalysisPrompt({
     sections,
@@ -598,7 +659,7 @@ export async function regenerateSingleSection(params: {
 CURRENT: ${currentSection.content}
 FEEDBACK: ${params.userNotes}
 GUIDELINES: ${sectionDef.promptGuidance}
-Return ONLY a JSON object (no markdown fences): { "id": "${params.sectionId}", "title": "${sectionDef.title}", "content": "...", "metrics": [...], "included": true, "skipReason": null }`
+Return ONLY a JSON object (no markdown fences): { "id": "${params.sectionId}", "title": "${sectionDef.title}", "content": "...", "chart_html": "", "metrics": [...], "included": true, "skipReason": null }`
   );
 
   const regenerated = parseRegeneratedSection(result, currentSection);
@@ -607,4 +668,3 @@ Return ONLY a JSON object (no markdown fences): { "id": "${params.sectionId}", "
   await supabase.from('reports').update({ generated_sections: updatedSections }).eq('id', params.reportId);
   return regenerated;
 }
-

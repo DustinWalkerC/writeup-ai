@@ -10,7 +10,17 @@
 import { BrandColors } from './types';
 
 export { type BrandColors } from './types';
-export type { KPIMetric, VarianceRow, WaterfallItem, HorizontalBarItem, TrendBarPoint, UnitMixRow, RiskItem, MoveData, ReportHeader } from './types';
+export type {
+  KPIMetric,
+  VarianceRow,
+  WaterfallItem,
+  HorizontalBarItem,
+  TrendBarPoint,
+  UnitMixRow,
+  RiskItem,
+  MoveData,
+  ReportHeader,
+} from './types';
 
 // Template sets
 import * as standardTemplates from './standard';
@@ -56,9 +66,13 @@ export function getTemplateSet(_styleId: string = 'standard') {
  */
 export function buildVisualizationTemplatesBlock(): string {
   return `<visualization_templates>
-You have access to pre-built chart templates. When a section calls for a chart,
-reproduce the template structure EXACTLY, replacing ONLY the data values.
-NEVER modify styles, padding, colors, or HTML structure.
+You have access to pre-built chart templates. Generate chart HTML in the "chart_html" field (NOT in "content").
+Reproduce template structure EXACTLY, replacing ONLY the data values and color tokens.
+The "content" field must contain ONLY narrative text — no HTML charts, divs, tables, or SVGs.
+
+WIDTH: All charts must work within a max-width of 816px (standard US letter page).
+Use width:100% on chart containers. Tables use overflow-x:auto wrapper.
+Grids with 4+ columns should use flex-wrap:wrap for narrow viewports.
 
 COLOR TOKENS — the user prompt's <brand_colors> section defines:
   {{PRIMARY}}   — Report primary color (headers, chart bars, table headers, KPI borders)
@@ -73,9 +87,16 @@ VARIANCE COLOR LOGIC:
   Expense items: decrease = {{GREEN}}, increase = {{RED}} (lower expenses = favorable)
   Occupancy: increase = {{GREEN}}, decrease = {{RED}}
 
+TEMPLATE: report_header
+Use for: FIRST section (executive_summary) ONLY. Place in chart_html BEFORE any other chart content.
+This is the institutional-grade report header — dark {{PRIMARY}} bar with property name, units, location,
+report period, then an {{ACCENT}} accent stripe, then a 5-column KPI summary bar underneath.
+Generate this ONCE per report, in the executive_summary section's chart_html only.
+${standardTemplates.REPORT_HEADER_EXAMPLE}
+
 TEMPLATE: kpi_strip
-Use for: All sections — renders 3-5 KPI cards in a horizontal row.
-Structure: Grid of cards with left border accent, label, value, MoM change arrow, vs-budget badge.
+IMPORTANT: Do NOT generate kpi_strip HTML. The viewer renders KPI cards automatically from the "metrics" array.
+Just populate the "metrics" JSON array with label, value, change, changeDirection, and vsbudget fields.
 ${standardTemplates.KPI_STRIP_EXAMPLE}
 
 TEMPLATE: budget_variance_table
@@ -108,7 +129,7 @@ Use for: noi_performance
 Structure: Vertical bar chart showing 3-6 months of NOI values.
 Bars color-coded: beat budget = {{GREEN}}, missed budget = {{RED}}, no budget = {{PRIMARY}}.
 Dashed horizontal line for budget target if available.
-${standardTemplates.NOI_TREND_EXAMPLE}
+${standardTemplates.NOI_TREND_BARS_EXAMPLE}
 
 TEMPLATE: rent_roll_table
 Use for: rent_roll_insights
@@ -125,7 +146,7 @@ ${standardTemplates.RISK_CARDS_EXAMPLE}
 TEMPLATE: move_in_out_bars
 Use for: occupancy_leasing (leasing activity subsection)
 Structure: Grouped bars showing Move-ins, Move-outs, Renewals for current vs prior month.
-${standardTemplates.MOVE_IN_OUT_EXAMPLE}
+${standardTemplates.MOVE_IN_OUT_BARS_EXAMPLE}
 
 TEMPLATE: comparison_table
 Use for: market_positioning, any institutional section needing multi-column comparison
@@ -147,8 +168,11 @@ CHART SELECTION BY SECTION:
 - asset_manager_outlook → kpi_strip only (no charts)
 - All other sections → kpi_strip where metrics available
 
-FOUNDATIONAL TIER: Use kpi_strip ONLY — no other chart templates.
+FOUNDATIONAL TIER: No chart_html — leave chart_html as empty string "".
 PROFESSIONAL TIER: Use all templates except comparison_table.
 INSTITUTIONAL TIER: Use all templates.
+
+IMPORTANT: KPI metrics go in the "metrics" JSON array ONLY.
+Do NOT generate kpi_strip HTML in chart_html. The viewer renders metrics automatically.
 </visualization_templates>`;
 }
