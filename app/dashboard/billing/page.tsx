@@ -38,7 +38,7 @@ export default function BillingPage() {
             : (<div className="mt-2"><span className="text-3xl font-bold text-slate-900">Free</span><span className="ml-2 px-2 py-1 bg-slate-100 text-slate-600 text-sm rounded-full">No active subscription</span></div>)}
           </div>
           {isActive ? <button onClick={handleManageBilling} className="px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 font-medium">Manage Billing</button>
-          : <Link href="/pricing" className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg font-medium">Upgrade Now</Link>}
+          : <Link href="/dashboard/pricing" className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg font-medium">Upgrade Now</Link>}
         </div>
         {isActive && subscription.current_period_end && (<div className="mt-4 pt-4 border-t border-slate-100"><p className="text-sm text-slate-500">Next billing: <span className="font-medium text-slate-700">{new Date(subscription.current_period_end).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</span></p></div>)}
       </div>

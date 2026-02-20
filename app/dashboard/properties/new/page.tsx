@@ -5,6 +5,44 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { createProperty } from '@/app/actions/properties'
 
+const C = {
+  accent: '#00B7DB',
+  bg: '#FFFFFF', bgAlt: '#F7F5F1', bgWarm: '#FAF9F7',
+  text: '#1A1A1A', textMid: '#4A4A4A', textSoft: '#7A7A7A', textMuted: '#A3A3A3',
+  border: '#E8E5E0', borderL: '#F0EDE8',
+  green: '#008A3E', red: '#CC0000',
+}
+
+const cardStyle: React.CSSProperties = {
+  background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24,
+}
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: 13, fontWeight: 600, color: C.textMid, marginBottom: 6,
+}
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '12px 16px', fontSize: 14, color: C.text,
+  fontFamily: 'var(--font-body, sans-serif)',
+  background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10,
+  outline: 'none', transition: 'all 0.25s cubic-bezier(0.22,1,0.36,1)',
+}
+const sectionHeading: React.CSSProperties = {
+  fontFamily: 'var(--font-display, Georgia, serif)',
+  fontSize: 18, fontWeight: 500, color: C.text,
+}
+
+function useFocusHandlers() {
+  return {
+    onFocus: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      e.currentTarget.style.borderColor = C.accent
+      e.currentTarget.style.boxShadow = `0 0 0 3px ${C.accent}15`
+    },
+    onBlur: (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+      e.currentTarget.style.borderColor = C.border
+      e.currentTarget.style.boxShadow = 'none'
+    },
+  }
+}
+
 export default function NewPropertyPage() {
   const router = useRouter()
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -12,13 +50,10 @@ export default function NewPropertyPage() {
   const [showCsvHelp, setShowCsvHelp] = useState(false)
   const [budgetFile, setBudgetFile] = useState<File | null>(null)
   const [uploadingBudget, setUploadingBudget] = useState(false)
+  const focus = useFocusHandlers()
 
   const [formData, setFormData] = useState({
-    name: '',
-    address: '',
-    units: '',
-    type: 'multifamily',
-    investment_strategy: '',
+    name: '', address: '', units: '', type: 'multifamily', investment_strategy: '',
   })
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -42,19 +77,13 @@ export default function NewPropertyPage() {
         return
       }
 
-      // Upload budget if provided
       if (budgetFile && result?.id) {
         setUploadingBudget(true)
         try {
           const budgetForm = new FormData()
           budgetForm.append('file', budgetFile)
-          await fetch(`/api/properties/${result.id}/budget`, {
-            method: 'POST',
-            body: budgetForm,
-          })
-        } catch (err) {
-          console.error('Budget upload failed:', err)
-        }
+          await fetch(`/api/properties/${result.id}/budget`, { method: 'POST', body: budgetForm })
+        } catch (err) { console.error('Budget upload failed:', err) }
         setUploadingBudget(false)
       }
 
@@ -67,200 +96,169 @@ export default function NewPropertyPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto">
+    <div style={{ maxWidth: 640, margin: '0 auto' }}>
       {/* Header */}
-      <div className="mb-8">
+      <div style={{ marginBottom: 32 }}>
         <Link
           href="/dashboard/properties"
-          className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-700 mb-4 transition-colors"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 4,
+            fontSize: 13, fontWeight: 600, color: C.textSoft, textDecoration: 'none',
+            marginBottom: 16, transition: 'color 0.2s',
+          }}
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
           Back to Properties
         </Link>
-        <h1 className="text-2xl font-bold text-slate-900">Add New Property</h1>
-        <p className="text-slate-500 mt-1">Add a property to your portfolio</p>
+        <h1 style={{
+          fontFamily: 'var(--font-display, Georgia, serif)',
+          fontSize: 26, fontWeight: 500, color: C.text, letterSpacing: '-0.015em',
+        }}>Add New Property</h1>
+        <p style={{ fontSize: 14, color: C.textSoft, marginTop: 4 }}>Add a property to your portfolio</p>
       </div>
 
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         {error && (
-          <div className="p-4 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            {error}
-          </div>
+          <div style={{
+            padding: 14, background: '#CC000008', border: '1px solid #CC000020',
+            borderRadius: 10, fontSize: 13, color: C.red,
+          }}>{error}</div>
         )}
 
-        {/* Property Details Card */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
-          <h3 className="text-lg font-semibold text-slate-900">Property Details</h3>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Property Name *
-            </label>
-            <input
-              type="text"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              placeholder="e.g., Sunset Apartments"
-              required
-              className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Address *
-            </label>
-            <input
-              type="text"
-              value={formData.address}
-              onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-              placeholder="e.g., 123 Main St, Houston, TX 77001"
-              required
-              className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
+        {/* Property Details */}
+        <div style={cardStyle}>
+          <h3 style={{ ...sectionHeading, marginBottom: 20 }}>Property Details</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Number of Units *
-              </label>
-              <input
-                type="number"
-                value={formData.units}
-                onChange={(e) => setFormData({ ...formData, units: e.target.value })}
-                placeholder="e.g., 150"
-                min="1"
-                required
-                className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all"
-              />
+              <label style={labelStyle}>Property Name *</label>
+              <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="e.g., Sunset Apartments" required style={inputStyle} {...focus} />
             </div>
-
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">
-                Property Type
-              </label>
-              <select
-                value={formData.type}
-                onChange={(e) => setFormData({ ...formData, type: e.target.value })}
-                className="w-full px-4 py-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all bg-white"
-              >
-                <option value="multifamily">Multifamily</option>
-                <option value="office">Office</option>
-                <option value="retail">Retail</option>
-                <option value="industrial">Industrial</option>
-                <option value="mixed_use">Mixed Use</option>
-              </select>
+              <label style={labelStyle}>Address *</label>
+              <input type="text" value={formData.address} onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                placeholder="e.g., 123 Main St, Houston, TX 77001" required style={inputStyle} {...focus} />
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <label style={labelStyle}>Number of Units *</label>
+                <input type="number" value={formData.units} onChange={(e) => setFormData({ ...formData, units: e.target.value })}
+                  placeholder="e.g., 150" min="1" required style={inputStyle} {...focus} />
+              </div>
+              <div>
+                <label style={labelStyle}>Property Type</label>
+                <select value={formData.type} onChange={(e) => setFormData({ ...formData, type: e.target.value })}
+                  style={{ ...inputStyle, appearance: 'none' as const, backgroundImage: `url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%237A7A7A' stroke-width='2' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 14px center' }}
+                  {...focus}>
+                  <option value="multifamily">Multifamily</option>
+                  <option value="office">Office</option>
+                  <option value="retail">Retail</option>
+                  <option value="industrial">Industrial</option>
+                  <option value="mixed_use">Mixed Use</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Investment Context Card (Optional) */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
-          <div>
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">Investment Context</h3>
-              <span className="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded-full">Optional</span>
-            </div>
-            <p className="text-sm text-slate-500 mt-1">This information is used automatically in every report generated for this property.</p>
+        {/* Investment Context */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <h3 style={sectionHeading}>Investment Context</h3>
+            <span style={{
+              fontSize: 10, fontWeight: 600, color: C.textMuted, background: C.bgAlt,
+              border: `1px solid ${C.borderL}`, borderRadius: 100, padding: '3px 10px',
+              textTransform: 'uppercase' as const, letterSpacing: '0.04em',
+            }}>Optional</span>
           </div>
+          <p style={{ fontSize: 13, color: C.textSoft, marginBottom: 20 }}>
+            This information is used automatically in every report generated for this property.
+          </p>
 
-          {/* Investment Strategy */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Investment Strategy / Business Plan
-            </label>
-            <textarea
-              value={formData.investment_strategy}
-              onChange={(e) => setFormData({ ...formData, investment_strategy: e.target.value })}
-              placeholder="e.g., Value-add acquisition targeting 20-unit interior renovation in Q1-Q2 2025. Targeting $150/unit rent premium post-renovation. Core-plus hold strategy with 3-year exit timeline..."
-              rows={4}
-              className="w-full border border-slate-200 rounded-lg px-4 py-3 text-slate-900 text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all placeholder-slate-400"
-            />
-            <p className="text-xs text-slate-400 mt-1">
-              The analysis engine weaves this context into the strategic recommendations of every report.
-            </p>
-          </div>
-
-          {/* Budget Upload */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-sm font-medium text-slate-700">Annual Budget</label>
-              <button
-                type="button"
-                onClick={() => setShowCsvHelp(true)}
-                className="text-xs text-cyan-600 hover:text-cyan-700 font-medium transition-colors"
-              >
-                How to export as CSV?
-              </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={labelStyle}>Investment Strategy / Business Plan</label>
+              <textarea value={formData.investment_strategy}
+                onChange={(e) => setFormData({ ...formData, investment_strategy: e.target.value })}
+                placeholder="e.g., Value-add acquisition targeting 20-unit interior renovation in Q1-Q2 2025..."
+                rows={4}
+                style={{ ...inputStyle, resize: 'vertical' as const }} {...focus} />
+              <p style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>
+                The analysis engine weaves this context into the strategic recommendations of every report.
+              </p>
             </div>
 
-            {budgetFile ? (
-              <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <span className="text-sm text-green-700 flex-1 truncate">{budgetFile.name}</span>
-                <button
-                  type="button"
-                  onClick={() => setBudgetFile(null)}
-                  className="text-sm text-red-500 hover:text-red-700 font-medium transition-colors"
-                >
-                  Remove
+            {/* Budget Upload */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <label style={labelStyle}>Annual Budget</label>
+                <button type="button" onClick={() => setShowCsvHelp(true)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: C.accent }}>
+                  How to export as CSV?
                 </button>
               </div>
-            ) : (
-              <label className="flex flex-col items-center justify-center px-4 py-6 border-2 border-dashed border-slate-200 rounded-lg cursor-pointer hover:border-cyan-300 hover:bg-cyan-50/30 transition-all">
-                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-2">
-                  <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                  </svg>
+
+              {budgetFile ? (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: 12,
+                  background: '#008A3E08', border: '1px solid #008A3E20', borderRadius: 10,
+                }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 8, background: '#008A3E15',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <span style={{ fontSize: 13, color: C.green, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{budgetFile.name}</span>
+                  <button type="button" onClick={() => setBudgetFile(null)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: C.red }}>
+                    Remove
+                  </button>
                 </div>
-                <p className="text-sm text-slate-600 font-medium">Upload budget (.csv)</p>
-                <p className="text-xs text-slate-400 mt-1">Stored once, reused for all future reports</p>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".csv"
-                  onChange={e => {
-                    const f = e.target.files?.[0]
-                    if (f) setBudgetFile(f)
-                    e.target.value = ''
-                  }}
-                />
-              </label>
-            )}
+              ) : (
+                <label style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  padding: '24px 16px', border: `2px dashed ${C.border}`, borderRadius: 10,
+                  cursor: 'pointer', transition: 'all 0.25s',
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = `${C.accent}60`; e.currentTarget.style.background = `${C.accent}04` }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.background = 'transparent' }}
+                >
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 10, background: C.bgAlt,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+                  }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.textMuted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                  </div>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>Upload budget (.csv)</p>
+                  <p style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Stored once, reused for all future reports</p>
+                  <input type="file" style={{ display: 'none' }} accept=".csv"
+                    onChange={e => { const f = e.target.files?.[0]; if (f) setBudgetFile(f); e.target.value = '' }} />
+                </label>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex items-center gap-3">
-          <button
-            type="submit"
-            disabled={isSubmitting || uploadingBudget}
-            className="flex-1 px-4 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white font-medium rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {isSubmitting ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                </svg>
-                {uploadingBudget ? 'Uploading Budget...' : 'Creating...'}
-              </span>
-            ) : (
-              'Create Property'
-            )}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="submit" disabled={isSubmitting || uploadingBudget}
+            style={{
+              flex: 1, padding: '13px 20px', fontSize: 14, fontWeight: 600,
+              color: '#fff', background: C.accent, border: 'none', borderRadius: 10,
+              cursor: isSubmitting ? 'not-allowed' : 'pointer',
+              opacity: isSubmitting ? 0.6 : 1,
+              boxShadow: `0 2px 12px ${C.accent}30`,
+              transition: 'all 0.25s',
+            }}>
+            {isSubmitting ? (uploadingBudget ? 'Uploading Budget...' : 'Creating...') : 'Create Property'}
           </button>
-          <Link
-            href="/dashboard/properties"
-            className="px-6 py-3 border border-slate-200 text-slate-600 font-medium rounded-lg hover:bg-slate-50 transition-all"
-          >
+          <Link href="/dashboard/properties"
+            style={{
+              padding: '13px 24px', fontSize: 14, fontWeight: 600, color: C.textMid,
+              background: 'transparent', border: `1.5px solid ${C.border}`, borderRadius: 10,
+              textDecoration: 'none', transition: 'all 0.2s',
+            }}>
             Cancel
           </Link>
         </div>
@@ -268,50 +266,43 @@ export default function NewPropertyPage() {
 
       {/* CSV Help Modal */}
       {showCsvHelp && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900">How to Export as CSV</h3>
-              <button
-                onClick={() => setShowCsvHelp(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}>
+          <div style={{ background: C.bg, borderRadius: 16, boxShadow: '0 24px 64px rgba(0,0,0,0.15)', maxWidth: 440, width: '100%', padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ ...sectionHeading }}>How to Export as CSV</h3>
+              <button onClick={() => setShowCsvHelp(false)}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: C.textMuted }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-
-            <div className="space-y-4 text-sm text-slate-600">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontSize: 13, color: C.textMid }}>
               <div>
-                <p className="font-medium text-slate-800 mb-1">From Microsoft Excel:</p>
-                <div className="bg-slate-50 rounded-lg p-3 space-y-1.5 text-slate-600">
-                  <p>1. Open your budget file in Excel</p>
-                  <p>2. Click <span className="font-medium text-slate-800">File</span> then <span className="font-medium text-slate-800">Save As</span></p>
-                  <p>3. Choose your save location</p>
-                  <p>4. In the <span className="font-medium text-slate-800">Save as type</span> dropdown, select <span className="font-medium text-slate-800">CSV (Comma delimited) (*.csv)</span></p>
-                  <p>5. Click <span className="font-medium text-slate-800">Save</span></p>
+                <p style={{ fontWeight: 600, color: C.text, marginBottom: 6 }}>From Microsoft Excel:</p>
+                <div style={{ background: C.bgAlt, borderRadius: 10, padding: 12, fontSize: 12, color: C.textSoft, lineHeight: 1.8 }}>
+                  1. Open your budget file in Excel<br/>
+                  2. Click <strong style={{ color: C.text }}>File</strong> then <strong style={{ color: C.text }}>Save As</strong><br/>
+                  3. Choose your save location<br/>
+                  4. Select <strong style={{ color: C.text }}>CSV (Comma delimited) (*.csv)</strong><br/>
+                  5. Click <strong style={{ color: C.text }}>Save</strong>
                 </div>
               </div>
-
               <div>
-                <p className="font-medium text-slate-800 mb-1">From Google Sheets:</p>
-                <div className="bg-slate-50 rounded-lg p-3 space-y-1.5 text-slate-600">
-                  <p>1. Open your budget in Google Sheets</p>
-                  <p>2. Click <span className="font-medium text-slate-800">File</span> then <span className="font-medium text-slate-800">Download</span></p>
-                  <p>3. Select <span className="font-medium text-slate-800">Comma-separated values (.csv)</span></p>
+                <p style={{ fontWeight: 600, color: C.text, marginBottom: 6 }}>From Google Sheets:</p>
+                <div style={{ background: C.bgAlt, borderRadius: 10, padding: 12, fontSize: 12, color: C.textSoft, lineHeight: 1.8 }}>
+                  1. Open your budget in Google Sheets<br/>
+                  2. Click <strong style={{ color: C.text }}>File</strong> then <strong style={{ color: C.text }}>Download</strong><br/>
+                  3. Select <strong style={{ color: C.text }}>Comma-separated values (.csv)</strong>
                 </div>
               </div>
-
-              <p className="text-xs text-slate-400">
+              <p style={{ fontSize: 11, color: C.textMuted }}>
                 CSV files are smaller and faster for our analysis engine to process than Excel files.
               </p>
             </div>
-
-            <button
-              onClick={() => setShowCsvHelp(false)}
-              className="w-full mt-5 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg text-sm font-medium hover:from-cyan-700 hover:to-teal-700 transition-all"
-            >
+            <button onClick={() => setShowCsvHelp(false)}
+              style={{
+                width: '100%', marginTop: 20, padding: '11px 16px', fontSize: 14, fontWeight: 600,
+                color: '#fff', background: C.accent, border: 'none', borderRadius: 10, cursor: 'pointer',
+              }}>
               Got it
             </button>
           </div>

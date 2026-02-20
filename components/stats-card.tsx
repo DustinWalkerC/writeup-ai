@@ -11,32 +11,43 @@ type StatsCardProps = {
 
 export function StatsCard({ title, value, subtitle, accentColor, icon, large }: StatsCardProps) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-5">
-      <div className="flex items-start justify-between">
+    <div style={{
+      background: '#FFFFFF',
+      border: '1px solid #E8E5E0',
+      borderRadius: 14,
+      padding: 20,
+    }}>
+      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
         <div>
-          <p className="text-sm font-medium text-slate-500">{title}</p>
-          <p
-            className={`font-bold text-slate-900 mt-1 ${large ? 'text-4xl' : 'text-2xl'}`}
-            style={accentColor ? { color: accentColor } : undefined}
-          >
-            {value}
-          </p>
+          <p style={{
+            fontSize: 11, fontWeight: 600, color: '#7A7A7A',
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+            marginBottom: 8, minHeight: 16, lineHeight: '16px',
+          }}>{title}</p>
+          <p style={{
+            fontFamily: 'var(--font-display, Georgia, serif)',
+            fontSize: large ? 36 : 28,
+            fontWeight: 500,
+            color: accentColor || '#1A1A1A',
+            lineHeight: 1,
+            fontVariantNumeric: 'tabular-nums',
+          }}>{value}</p>
           {subtitle && (
-            <p className="text-xs text-slate-400 mt-1">{subtitle}</p>
+            <p style={{ fontSize: 12, color: '#A3A3A3', marginTop: 6 }}>{subtitle}</p>
           )}
         </div>
         {icon && (
-          <div
-            className="p-2 rounded-lg"
-            style={{ backgroundColor: accentColor ? `${accentColor}15` : '#f1f5f9' }}
-          >
-            <div style={{ color: accentColor || '#64748b' }}>
-              {icon}
-            </div>
+          <div style={{
+            padding: 10, borderRadius: 10,
+            background: accentColor ? `${accentColor}10` : '#F7F5F1',
+            border: `1px solid ${accentColor ? `${accentColor}18` : '#F0EDE8'}`,
+            color: accentColor || '#7A7A7A',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>
+            {icon}
           </div>
         )}
       </div>
     </div>
   )
 }
-

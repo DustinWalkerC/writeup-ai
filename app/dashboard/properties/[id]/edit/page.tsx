@@ -15,6 +15,40 @@ type Property = {
   budget_file_name?: string | null
 }
 
+const C = {
+  accent: '#00B7DB',
+  bg: '#FFFFFF', bgAlt: '#F7F5F1', bgWarm: '#FAF9F7',
+  text: '#1A1A1A', textMid: '#4A4A4A', textSoft: '#7A7A7A', textMuted: '#A3A3A3',
+  border: '#E8E5E0', borderL: '#F0EDE8',
+  green: '#008A3E', red: '#CC0000',
+}
+
+const cardStyle: React.CSSProperties = {
+  background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 24,
+}
+const labelStyle: React.CSSProperties = {
+  display: 'block', fontSize: 13, fontWeight: 600, color: C.textMid, marginBottom: 6,
+}
+const inputStyle: React.CSSProperties = {
+  width: '100%', padding: '11px 16px', fontSize: 14, color: C.text,
+  fontFamily: 'var(--font-body, sans-serif)',
+  background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10,
+  outline: 'none', transition: 'all 0.25s cubic-bezier(0.22,1,0.36,1)',
+}
+const sectionHeading: React.CSSProperties = {
+  fontFamily: 'var(--font-display, Georgia, serif)',
+  fontSize: 18, fontWeight: 500, color: C.text,
+}
+
+function focusHandler(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
+  e.currentTarget.style.borderColor = C.accent
+  e.currentTarget.style.boxShadow = `0 0 0 3px ${C.accent}15`
+}
+function blurHandler(e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) {
+  e.currentTarget.style.borderColor = C.border
+  e.currentTarget.style.boxShadow = 'none'
+}
+
 export default function EditPropertyPage() {
   const router = useRouter()
   const params = useParams()
@@ -25,10 +59,10 @@ export default function EditPropertyPage() {
   const [isSaving, setIsSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [showCsvHelp, setShowCsvHelp] = useState(false)
-
   const [investmentStrategy, setInvestmentStrategy] = useState('')
   const [budgetFileName, setBudgetFileName] = useState('')
   const [uploadingBudget, setUploadingBudget] = useState(false)
+  const [hasReports, setHasReports] = useState(false)
 
   useEffect(() => {
     const fetchProperty = async () => {
@@ -39,6 +73,7 @@ export default function EditPropertyPage() {
         setProperty(data)
         setInvestmentStrategy(data.investment_strategy || '')
         setBudgetFileName(data.budget_file_name || '')
+        setHasReports(data.has_reports || false)
       } catch (err: any) {
         setError(err.message || 'Failed to load property')
       } finally {
@@ -54,12 +89,7 @@ export default function EditPropertyPage() {
     try {
       const formData = new FormData()
       formData.append('file', file)
-
-      const res = await fetch(`/api/properties/${property.id}/budget`, {
-        method: 'POST',
-        body: formData,
-      })
-
+      const res = await fetch(`/api/properties/${property.id}/budget`, { method: 'POST', body: formData })
       const data = await res.json()
       if (res.ok) setBudgetFileName(data.budgetFileName)
       else alert(data.error || 'Budget upload failed')
@@ -86,11 +116,9 @@ export default function EditPropertyPage() {
     e.preventDefault()
     setIsSaving(true)
     setError(null)
-
     try {
       const formData = new FormData(e.currentTarget)
       formData.set('investment_strategy', investmentStrategy)
-
       await updateProperty(propertyId, formData)
       router.push('/dashboard/properties')
     } catch (err: any) {
@@ -102,20 +130,23 @@ export default function EditPropertyPage() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin" />
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+        <div style={{
+          width: 32, height: 32, border: `2.5px solid ${C.borderL}`,
+          borderTop: `2.5px solid ${C.accent}`, borderRadius: '50%',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
       </div>
     )
   }
 
   if (!property) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-500">{error || 'Property not found'}</p>
-        <button
-          onClick={() => router.push('/dashboard/properties')}
-          className="mt-4 text-cyan-600 hover:text-cyan-700 font-medium"
-        >
+      <div style={{ textAlign: 'center', padding: '48px 0' }}>
+        <p style={{ fontSize: 14, color: C.red }}>{error || 'Property not found'}</p>
+        <button onClick={() => router.push('/dashboard/properties')}
+          style={{ marginTop: 16, background: 'none', border: 'none', cursor: 'pointer', fontSize: 14, fontWeight: 600, color: C.accent }}>
           Back to Properties
         </button>
       </div>
@@ -123,203 +154,165 @@ export default function EditPropertyPage() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div style={{ maxWidth: 640, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => router.push('/dashboard/properties')}
-          className="text-slate-400 hover:text-slate-600 transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-          </svg>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <button onClick={() => router.push('/dashboard/properties')}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: C.textMuted, padding: 4 }}>
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Edit Property</h1>
-          <p className="text-slate-500 mt-1">{property.name}</p>
+          <h1 style={{
+            fontFamily: 'var(--font-display, Georgia, serif)',
+            fontSize: 26, fontWeight: 500, color: C.text, letterSpacing: '-0.015em',
+          }}>Edit Property</h1>
+          <p style={{ fontSize: 14, color: C.textSoft, marginTop: 2 }}>{property.name}</p>
         </div>
       </div>
 
-      {/* Form */}
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
         {error && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
-            {error}
-          </div>
+          <div style={{ padding: 12, background: '#CC000008', border: '1px solid #CC000020', borderRadius: 10, fontSize: 13, color: C.red }}>{error}</div>
         )}
 
-        {/* Property Details Card */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
-          <h3 className="text-lg font-semibold text-slate-900">Property Details</h3>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Property Name</label>
-            <input
-              name="name"
-              type="text"
-              defaultValue={property.name}
-              required
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Address</label>
-            <input
-              name="address"
-              type="text"
-              defaultValue={property.address || ''}
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
+        {/* Property Details */}
+        <div style={cardStyle}>
+          <h3 style={{ ...sectionHeading, marginBottom: 20 }}>Property Details</h3>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">City</label>
-              <input
-                name="city"
-                type="text"
-                defaultValue={property.city || ''}
-                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
-              />
+              <label style={labelStyle}>
+                Property Name
+                {hasReports && (
+                  <span style={{ marginLeft: 8, fontSize: 11, fontWeight: 500, color: C.textMuted, display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={C.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                    Locked — reports exist
+                  </span>
+                )}
+              </label>
+              <input name="name" type="text" defaultValue={property.name} required readOnly={hasReports}
+                style={{
+                  ...inputStyle,
+                  ...(hasReports ? { background: C.bgAlt, color: C.textSoft, cursor: 'not-allowed' } : {}),
+                }} onFocus={focusHandler} onBlur={blurHandler} />
             </div>
             <div>
-              <label className="block text-sm font-medium text-slate-700 mb-1.5">State</label>
-              <input
-                name="state"
-                type="text"
-                defaultValue={property.state || ''}
-                className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
-              />
+              <label style={labelStyle}>Address</label>
+              <input name="address" type="text" defaultValue={property.address || ''} style={inputStyle} onFocus={focusHandler} onBlur={blurHandler} />
             </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">Number of Units</label>
-            <input
-              name="units"
-              type="number"
-              defaultValue={property.units || ''}
-              min="1"
-              className="w-full px-4 py-2.5 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-500 focus:border-transparent transition-all"
-            />
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
+              <div>
+                <label style={labelStyle}>City</label>
+                <input name="city" type="text" defaultValue={property.city || ''} style={inputStyle} onFocus={focusHandler} onBlur={blurHandler} />
+              </div>
+              <div>
+                <label style={labelStyle}>State</label>
+                <input name="state" type="text" defaultValue={property.state || ''} style={inputStyle} onFocus={focusHandler} onBlur={blurHandler} />
+              </div>
+            </div>
+            <div>
+              <label style={labelStyle}>Number of Units</label>
+              <input name="units" type="number" defaultValue={property.units || ''} min="1" style={inputStyle} onFocus={focusHandler} onBlur={blurHandler} />
+            </div>
           </div>
         </div>
 
-        {/* Investment Context Card */}
-        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-5">
-          <div>
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-semibold text-slate-900">Investment Context</h3>
-              <span className="text-xs font-medium text-slate-400 bg-slate-100 px-2 py-1 rounded-full">Optional</span>
-            </div>
-            <p className="text-sm text-slate-500 mt-1">This information is used automatically in every report generated for this property.</p>
+        {/* Investment Context */}
+        <div style={cardStyle}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+            <h3 style={sectionHeading}>Investment Context</h3>
+            <span style={{
+              fontSize: 10, fontWeight: 600, color: C.textMuted, background: C.bgAlt,
+              border: `1px solid ${C.borderL}`, borderRadius: 100, padding: '3px 10px',
+              textTransform: 'uppercase' as const, letterSpacing: '0.04em',
+            }}>Optional</span>
           </div>
+          <p style={{ fontSize: 13, color: C.textSoft, marginBottom: 20 }}>
+            This information is used automatically in every report generated for this property.
+          </p>
 
-          {/* Investment Strategy */}
-          <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1.5">
-              Investment Strategy / Business Plan
-            </label>
-            <textarea
-              value={investmentStrategy}
-              onChange={e => setInvestmentStrategy(e.target.value)}
-              placeholder="e.g., Value-add acquisition targeting 20-unit interior renovation in Q1-Q2 2025. Targeting $150/unit rent premium post-renovation. Core-plus hold strategy with 3-year exit timeline..."
-              rows={4}
-              className="w-full border border-slate-200 rounded-lg px-4 py-3 text-slate-900 text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-all placeholder-slate-400"
-            />
-            <p className="text-xs text-slate-400 mt-1">
-              The analysis engine weaves this context into the strategic recommendations of every report.
-            </p>
-          </div>
-
-          {/* Budget Upload */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="block text-sm font-medium text-slate-700">Annual Budget</label>
-              <button
-                type="button"
-                onClick={() => setShowCsvHelp(true)}
-                className="text-xs text-cyan-600 hover:text-cyan-700 font-medium transition-colors"
-              >
-                How to export as CSV?
-              </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div>
+              <label style={labelStyle}>Investment Strategy / Business Plan</label>
+              <textarea value={investmentStrategy} onChange={e => setInvestmentStrategy(e.target.value)}
+                placeholder="e.g., Value-add acquisition targeting 20-unit interior renovation..."
+                rows={4} style={{ ...inputStyle, resize: 'vertical' as const }} onFocus={focusHandler as any} onBlur={blurHandler as any} />
+              <p style={{ fontSize: 11, color: C.textMuted, marginTop: 4 }}>
+                The analysis engine weaves this context into the strategic recommendations of every report.
+              </p>
             </div>
 
-            {budgetFileName ? (
-              <div className="flex items-center gap-3 p-3 bg-green-50 border border-green-200 rounded-lg">
-                <div className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
-                  <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
-                    <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                  </svg>
-                </div>
-                <span className="text-sm text-green-700 flex-1 truncate">{budgetFileName}</span>
-                <button
-                  type="button"
-                  onClick={handleBudgetDelete}
-                  className="text-sm text-red-500 hover:text-red-700 font-medium transition-colors"
-                >
-                  Remove
+            {/* Budget Upload */}
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+                <label style={labelStyle}>Annual Budget</label>
+                <button type="button" onClick={() => setShowCsvHelp(true)}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600, color: C.accent }}>
+                  How to export as CSV?
                 </button>
-                <label className="text-sm text-cyan-600 hover:text-cyan-700 cursor-pointer font-medium transition-colors">
-                  Replace
-                  <input
-                    type="file"
-                    className="hidden"
-                    accept=".csv"
-                    onChange={e => {
-                      const f = e.target.files?.[0]
-                      if (f) handleBudgetUpload(f)
-                      if (e.target) e.target.value = ''
-                    }}
-                  />
-                </label>
               </div>
-            ) : (
-              <label className={`flex flex-col items-center justify-center px-4 py-6 border-2 border-dashed rounded-lg cursor-pointer transition-all ${
-                uploadingBudget
-                  ? 'border-slate-200 bg-slate-50'
-                  : 'border-slate-200 hover:border-cyan-300 hover:bg-cyan-50/30'
-              }`}>
-                <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center mb-2">
-                  <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-                  </svg>
+
+              {budgetFileName ? (
+                <div style={{
+                  display: 'flex', alignItems: 'center', gap: 12, padding: 12,
+                  background: '#008A3E08', border: '1px solid #008A3E20', borderRadius: 10,
+                }}>
+                  <div style={{
+                    width: 32, height: 32, borderRadius: 8, background: '#008A3E15',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                  }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={C.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  </div>
+                  <span style={{ fontSize: 13, color: C.green, flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{budgetFileName}</span>
+                  <button type="button" onClick={handleBudgetDelete}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600, color: C.red }}>Remove</button>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: C.accent, cursor: 'pointer' }}>
+                    Replace
+                    <input type="file" style={{ display: 'none' }} accept=".csv,.xlsx,.xls"
+                      onChange={e => { const f = e.target.files?.[0]; if (f) handleBudgetUpload(f); if (e.target) e.target.value = '' }} />
+                  </label>
                 </div>
-                <p className="text-sm text-slate-600 font-medium">
-                  {uploadingBudget ? 'Uploading...' : 'Upload budget (.csv)'}
-                </p>
-                <p className="text-xs text-slate-400 mt-1">Stored once, reused for all future reports</p>
-                <input
-                  type="file"
-                  className="hidden"
-                  accept=".csv"
-                  disabled={uploadingBudget}
-                  onChange={e => {
-                    const f = e.target.files?.[0]
-                    if (f) handleBudgetUpload(f)
-                    if (e.target) e.target.value = ''
-                  }}
-                />
-              </label>
-            )}
+              ) : (
+                <label style={{
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  padding: '24px 16px', border: `2px dashed ${uploadingBudget ? C.borderL : C.border}`,
+                  borderRadius: 10, cursor: uploadingBudget ? 'default' : 'pointer',
+                  background: uploadingBudget ? C.bgAlt : 'transparent', transition: 'all 0.25s',
+                }}
+                onMouseEnter={(e) => { if (!uploadingBudget) { e.currentTarget.style.borderColor = `${C.accent}60`; e.currentTarget.style.background = `${C.accent}04` }}}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = uploadingBudget ? C.borderL : C.border; e.currentTarget.style.background = uploadingBudget ? C.bgAlt : 'transparent' }}
+                >
+                  <div style={{
+                    width: 40, height: 40, borderRadius: 10, background: C.bgAlt,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 8,
+                  }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={C.textMuted} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/></svg>
+                  </div>
+                  <p style={{ fontSize: 13, fontWeight: 600, color: C.textMid }}>{uploadingBudget ? 'Uploading...' : 'Upload budget (.csv or .xlsx)'}</p>
+                  <p style={{ fontSize: 11, color: C.textMuted, marginTop: 2 }}>Stored once, reused for all future reports</p>
+                  <input type="file" style={{ display: 'none' }} accept=".csv,.xlsx,.xls" disabled={uploadingBudget}
+                    onChange={e => { const f = e.target.files?.[0]; if (f) handleBudgetUpload(f); if (e.target) e.target.value = '' }} />
+                </label>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Actions */}
-        <div className="flex gap-3">
-          <button
-            type="submit"
-            disabled={isSaving}
-            className="flex-1 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white font-medium rounded-lg hover:from-cyan-700 hover:to-teal-700 transition-all disabled:opacity-50"
-          >
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button type="submit" disabled={isSaving}
+            style={{
+              flex: 1, padding: '12px 20px', fontSize: 14, fontWeight: 600,
+              color: '#fff', background: C.accent, border: 'none', borderRadius: 10,
+              cursor: isSaving ? 'not-allowed' : 'pointer', opacity: isSaving ? 0.6 : 1,
+              boxShadow: `0 2px 12px ${C.accent}30`,
+            }}>
             {isSaving ? 'Saving...' : 'Save Changes'}
           </button>
-          <button
-            type="button"
-            onClick={() => router.push('/dashboard/properties')}
-            className="px-6 py-2.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors"
-          >
+          <button type="button" onClick={() => router.push('/dashboard/properties')}
+            style={{
+              padding: '12px 24px', fontSize: 14, fontWeight: 600, color: C.textMid,
+              background: 'transparent', border: `1.5px solid ${C.border}`, borderRadius: 10, cursor: 'pointer',
+            }}>
             Cancel
           </button>
         </div>
@@ -327,50 +320,32 @@ export default function EditPropertyPage() {
 
       {/* CSV Help Modal */}
       {showCsvHelp && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-6">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-slate-900">How to Export as CSV</h3>
-              <button
-                onClick={() => setShowCsvHelp(false)}
-                className="p-1 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100 transition-colors"
-              >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}>
+          <div style={{ background: C.bg, borderRadius: 16, boxShadow: '0 24px 64px rgba(0,0,0,0.15)', maxWidth: 440, width: '100%', padding: 24 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <h3 style={{ fontFamily: 'var(--font-display, Georgia, serif)', fontSize: 18, fontWeight: 500, color: C.text }}>How to Export as CSV</h3>
+              <button onClick={() => setShowCsvHelp(false)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: C.textMuted }}>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
               </button>
             </div>
-
-            <div className="space-y-4 text-sm text-slate-600">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 16, fontSize: 13, color: C.textMid }}>
               <div>
-                <p className="font-medium text-slate-800 mb-1">From Microsoft Excel:</p>
-                <div className="bg-slate-50 rounded-lg p-3 space-y-1.5 text-slate-600">
-                  <p>1. Open your budget file in Excel</p>
-                  <p>2. Click <span className="font-medium text-slate-800">File</span> then <span className="font-medium text-slate-800">Save As</span></p>
-                  <p>3. Choose your save location</p>
-                  <p>4. In the <span className="font-medium text-slate-800">Save as type</span> dropdown, select <span className="font-medium text-slate-800">CSV (Comma delimited) (*.csv)</span></p>
-                  <p>5. Click <span className="font-medium text-slate-800">Save</span></p>
+                <p style={{ fontWeight: 600, color: C.text, marginBottom: 6 }}>From Microsoft Excel:</p>
+                <div style={{ background: C.bgAlt, borderRadius: 10, padding: 12, fontSize: 12, color: C.textSoft, lineHeight: 1.8 }}>
+                  1. Open your budget file in Excel<br/>2. Click <strong style={{ color: C.text }}>File</strong> → <strong style={{ color: C.text }}>Save As</strong><br/>
+                  3. Select <strong style={{ color: C.text }}>CSV (Comma delimited) (*.csv)</strong><br/>4. Click <strong style={{ color: C.text }}>Save</strong>
                 </div>
               </div>
-
               <div>
-                <p className="font-medium text-slate-800 mb-1">From Google Sheets:</p>
-                <div className="bg-slate-50 rounded-lg p-3 space-y-1.5 text-slate-600">
-                  <p>1. Open your budget in Google Sheets</p>
-                  <p>2. Click <span className="font-medium text-slate-800">File</span> then <span className="font-medium text-slate-800">Download</span></p>
-                  <p>3. Select <span className="font-medium text-slate-800">Comma-separated values (.csv)</span></p>
+                <p style={{ fontWeight: 600, color: C.text, marginBottom: 6 }}>From Google Sheets:</p>
+                <div style={{ background: C.bgAlt, borderRadius: 10, padding: 12, fontSize: 12, color: C.textSoft, lineHeight: 1.8 }}>
+                  1. Click <strong style={{ color: C.text }}>File</strong> → <strong style={{ color: C.text }}>Download</strong><br/>
+                  2. Select <strong style={{ color: C.text }}>Comma-separated values (.csv)</strong>
                 </div>
               </div>
-
-              <p className="text-xs text-slate-400">
-                CSV files are smaller and faster for our analysis engine to process than Excel files.
-              </p>
             </div>
-
-            <button
-              onClick={() => setShowCsvHelp(false)}
-              className="w-full mt-5 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg text-sm font-medium hover:from-cyan-700 hover:to-teal-700 transition-all"
-            >
+            <button onClick={() => setShowCsvHelp(false)}
+              style={{ width: '100%', marginTop: 20, padding: '11px 16px', fontSize: 14, fontWeight: 600, color: '#fff', background: C.accent, border: 'none', borderRadius: 10, cursor: 'pointer' }}>
               Got it
             </button>
           </div>

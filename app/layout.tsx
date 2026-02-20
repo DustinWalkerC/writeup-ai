@@ -1,8 +1,19 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
-import { Inter } from "next/font/google";
+import { DM_Sans, Newsreader } from "next/font/google";
 
-const inter = Inter({ subsets: ["latin"] });
+const dmSans = DM_Sans({
+  subsets: ["latin"],
+  variable: "--font-dm-sans",
+  display: "swap",
+});
+
+const newsreader = Newsreader({
+  subsets: ["latin"],
+  variable: "--font-newsreader",
+  style: ["normal", "italic"],
+  display: "swap",
+});
 
 export const metadata = {
   title: "writeup-ai",
@@ -16,10 +27,10 @@ export default function RootLayout({
 }) {
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body className={inter.className} suppressHydrationWarning>
-  {children}
-</body>
+      <html lang="en" className={`${dmSans.variable} ${newsreader.variable}`}>
+        <body className={dmSans.className} suppressHydrationWarning>
+          {children}
+        </body>
       </html>
     </ClerkProvider>
   );

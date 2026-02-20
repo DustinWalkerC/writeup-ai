@@ -8,34 +8,54 @@ type Props = {
 
 export function SearchInput({ value, onChange, placeholder = 'Search...' }: Props) {
   return (
-    <div className="relative">
+    <div style={{ position: 'relative' }}>
       <svg
-        className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
+        style={{
+          position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)',
+          width: 16, height: 16, color: '#A3A3A3',
+        }}
+        fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
       >
-        <path
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeWidth={2}
-          d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-        />
+        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65" strokeLinecap="round"/>
       </svg>
       <input
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full pl-10 pr-4 py-2.5 bg-white border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none transition-colors"
+        style={{
+          width: '100%',
+          paddingLeft: 40, paddingRight: value ? 40 : 14,
+          paddingTop: 11, paddingBottom: 11,
+          fontSize: 14, color: '#1A1A1A',
+          fontFamily: 'var(--font-body, sans-serif)',
+          background: '#FFFFFF',
+          border: '1px solid #E8E5E0',
+          borderRadius: 10,
+          outline: 'none',
+          transition: 'all 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
+        }}
+        onFocus={(e) => {
+          e.currentTarget.style.borderColor = '#00B7DB'
+          e.currentTarget.style.boxShadow = '0 0 0 3px #00B7DB15'
+        }}
+        onBlur={(e) => {
+          e.currentTarget.style.borderColor = '#E8E5E0'
+          e.currentTarget.style.boxShadow = 'none'
+        }}
       />
       {value && (
         <button
           onClick={() => onChange('')}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+          style={{
+            position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
+            background: 'none', border: 'none', cursor: 'pointer',
+            padding: 4, display: 'flex', alignItems: 'center',
+            color: '#A3A3A3',
+          }}
         >
-          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
       )}

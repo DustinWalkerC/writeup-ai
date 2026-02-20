@@ -19,7 +19,15 @@ export async function GET(
     .single();
 
   if (error || !property) return NextResponse.json({ error: 'Property not found' }, { status: 404 });
-  return NextResponse.json(property);
+
+  // Check if property has reports (for name-lock fraud prevention)
+  const { count: reportCount } = await supabase
+    .from('reports')
+    .select('*', { count: 'exact', head: true })
+    .eq('property_id', id)
+    .eq('user_id', userId);
+
+  return NextResponse.json({ ...property, has_reports: (reportCount || 0) > 0 });
 }
 
 // PATCH - Update a property
@@ -95,5 +103,6 @@ export async function DELETE(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ success: true });
 }
+
 
 

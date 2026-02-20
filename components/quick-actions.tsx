@@ -14,47 +14,88 @@ type Props = {
 
 export function QuickActions({ propertiesNeedingReports, currentPeriod }: Props) {
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-6">
-      <h3 className="text-lg font-semibold text-slate-900 mb-4">Quick Actions</h3>
+    <div style={{ background: '#FFFFFF', border: '1px solid #E8E5E0', borderRadius: 14, padding: 24 }}>
+      <h3 style={{
+        fontFamily: 'var(--font-display, Georgia, serif)',
+        fontSize: 18, fontWeight: 500, color: '#1A1A1A', marginBottom: 16,
+      }}>Quick Actions</h3>
       
-      <div className="space-y-3">
-        {/* Primary Action */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        {/* Primary Action = ACCENT */}
         <Link
           href="/dashboard/reports/new"
-          className="flex items-center gap-3 p-4 rounded-lg bg-gradient-to-r from-cyan-600 to-teal-600 text-white hover:from-cyan-700 hover:to-teal-700 transition-colors"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '14px 16px', borderRadius: 10,
+            background: '#00B7DB', color: '#FFFFFF',
+            textDecoration: 'none', fontWeight: 600, fontSize: 14,
+            boxShadow: '0 2px 12px #00B7DB30',
+            transition: 'all 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
+          }}
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
-          <span className="font-medium">Create New Report</span>
+          Create New Report
         </Link>
 
-        {/* Secondary Actions */}
+        {/* Secondary Action */}
         <Link
           href="/dashboard/properties/new"
-          className="flex items-center gap-3 p-4 rounded-lg border border-slate-200 text-slate-700 hover:bg-slate-50 transition-colors"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 10,
+            padding: '14px 16px', borderRadius: 10,
+            background: 'transparent', color: '#4A4A4A',
+            border: '1.5px solid #E8E5E0',
+            textDecoration: 'none', fontWeight: 600, fontSize: 14,
+            transition: 'all 0.25s',
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.borderColor = '#00B7DB50'
+            e.currentTarget.style.background = '#00B7DB06'
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.borderColor = '#E8E5E0'
+            e.currentTarget.style.background = 'transparent'
+          }}
         >
-          <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#7A7A7A" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="4" y="2" width="16" height="20" rx="2"/><line x1="9" y1="6" x2="9" y2="6.01"/><line x1="15" y1="6" x2="15" y2="6.01"/><line x1="9" y1="10" x2="9" y2="10.01"/><line x1="15" y1="10" x2="15" y2="10.01"/><line x1="9" y1="14" x2="9" y2="14.01"/><line x1="15" y1="14" x2="15" y2="14.01"/><line x1="9" y1="18" x2="15" y2="18"/>
           </svg>
-          <span className="font-medium">Add Property</span>
+          Add Property
         </Link>
 
         {/* Properties needing reports */}
         {propertiesNeedingReports.length > 0 && (
-          <div className="mt-4 pt-4 border-t border-slate-100">
-            <p className="text-sm font-medium text-slate-500 mb-2">
+          <div style={{ marginTop: 8, paddingTop: 16, borderTop: '1px solid #F0EDE8' }}>
+            <p style={{
+              fontSize: 11, fontWeight: 600, color: '#7A7A7A',
+              textTransform: 'uppercase', letterSpacing: '0.06em',
+              marginBottom: 8,
+            }}>
               Needs {currentPeriod.month} report:
             </p>
-            <div className="space-y-2">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {propertiesNeedingReports.map((property) => (
                 <Link
                   key={property.id}
                   href={`/dashboard/reports/new?propertyId=${property.id}`}
-                  className="flex items-center justify-between p-3 rounded-lg bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 transition-colors"
+                  style={{
+                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 12px', borderRadius: 10,
+                    background: '#C8B88A12', border: '1px solid #C8B88A30',
+                    textDecoration: 'none',
+                    transition: 'all 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = '#C8B88A20'
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = '#C8B88A12'
+                  }}
                 >
-                  <span className="text-sm font-medium">{property.name}</span>
-                  <span className="text-xs">Create →</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: '#1A1A1A' }}>{property.name}</span>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: '#00B7DB' }}>Create →</span>
                 </Link>
               ))}
             </div>
@@ -64,4 +105,3 @@ export function QuickActions({ propertiesNeedingReports, currentPeriod }: Props)
     </div>
   )
 }
-

@@ -3,14 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@clerk/nextjs'
-import { PLANS, type PlanTier, type BillingCycle } from '@/lib/plans'
-
-// Hours saved per property per month, by tier
-const HOURS_SAVED: Record<PlanTier, number> = {
-  foundational: 3,    // Basic automation — PDF export, simple summary
-  professional: 5,    // Charts, branding, deep analysis save more manual work
-  institutional: 7,   // Custom templates, API, full automation
-}
+import { PLANS, HOURS_SAVED_PER_PROPERTY, type PlanTier, type BillingCycle } from '@/lib/plans'
 
 export default function PricingPage() {
   const router = useRouter()
@@ -25,22 +18,8 @@ export default function PricingPage() {
       router.push('/sign-up?redirect=/dashboard/pricing')
       return
     }
-    setIsLoading(true)
-    try {
-      const res = await fetch('/api/stripe/checkout', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tier: selectedTier, billingCycle, propertyCount }),
-      })
-      const { url, error } = await res.json()
-      if (error) throw new Error(error)
-      if (url) window.location.href = url
-    } catch (error) {
-      console.error('Checkout error:', error)
-      alert('Failed to start checkout. Please try again.')
-    } finally {
-      setIsLoading(false)
-    }
+    // Route to custom checkout page with selections as URL params
+    router.push(`/dashboard/checkout?tier=${selectedTier}&cycle=${billingCycle}&properties=${propertyCount}`)
   }
 
   // Cost calculations
@@ -56,7 +35,7 @@ export default function PricingPage() {
   const totalPeriodCost = priceInfo.amount * propertyCount
 
   // Savings calculations
-  const hoursSavedPerMonth = HOURS_SAVED[selectedTier] * propertyCount
+  const hoursSavedPerMonth = HOURS_SAVED_PER_PROPERTY[selectedTier] * propertyCount
 
   const formatCurrency = (n: number) =>
     n.toLocaleString('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
@@ -186,7 +165,7 @@ export default function PricingPage() {
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Saves ~{HOURS_SAVED[tier]} hrs/property/month
+                  Saves ~{HOURS_SAVED_PER_PROPERTY[tier]} hrs/property/month
                 </div>
 
                 {/* Features */}
@@ -314,7 +293,7 @@ export default function PricingPage() {
               hours back every month
             </div>
             <div className="text-xs text-slate-500 mt-2">
-              {HOURS_SAVED[selectedTier]} hrs saved per property × {propertyCount} properties
+              {HOURS_SAVED_PER_PROPERTY[selectedTier]} hrs saved per property × {propertyCount} properties
             </div>
           </div>
 

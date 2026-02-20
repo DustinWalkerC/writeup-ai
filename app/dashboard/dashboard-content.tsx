@@ -1,4 +1,3 @@
-
 'use client'
 
 import { useState, useEffect } from 'react'
@@ -61,19 +60,28 @@ export function DashboardContent({ userName }: Props) {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+        <div style={{
+          width: 32, height: 32, borderRadius: '50%',
+          border: '2.5px solid #E8E5E0', borderTopColor: '#00B7DB',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     )
   }
 
   if (error || !data) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-500">{error || 'Failed to load dashboard'}</p>
+      <div style={{ textAlign: 'center', padding: '48px 0' }}>
+        <p style={{ color: '#CC0000', fontSize: 14 }}>{error || 'Failed to load dashboard'}</p>
         <button 
           onClick={fetchDashboardData}
-          className="mt-4 text-cyan-600 hover:text-cyan-700 font-medium"
+          style={{
+            marginTop: 16, fontSize: 14, fontWeight: 600,
+            color: '#00B7DB', background: 'none', border: 'none',
+            cursor: 'pointer',
+          }}
         >
           Try again
         </button>
@@ -84,13 +92,17 @@ export function DashboardContent({ userName }: Props) {
   const firstName = userName.split(' ')[0] || 'there'
 
   return (
-    <div className="space-y-8">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 32 }}>
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">
+        <h1 style={{
+          fontFamily: 'var(--font-display, Georgia, serif)',
+          fontSize: 28, fontWeight: 500, color: '#1A1A1A',
+          letterSpacing: '-0.015em',
+        }}>
           Welcome back, {firstName}
         </h1>
-        <p className="text-slate-500 mt-1">
+        <p style={{ fontSize: 14, color: '#7A7A7A', marginTop: 4 }}>
           Here's what's happening with your portfolio
         </p>
       </div>
@@ -111,7 +123,7 @@ export function DashboardContent({ userName }: Props) {
           title="Reports This Month"
           value={data.stats.reportsThisMonth}
           subtitle={`${data.currentPeriod.month} ${data.currentPeriod.year}`}
-          accentColor="#10b981"
+          accentColor="#00B7DB"
           icon={
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
@@ -122,7 +134,7 @@ export function DashboardContent({ userName }: Props) {
           title="Completed"
           value={data.stats.completedReports}
           subtitle="All time"
-          accentColor="#14b8a6"
+          accentColor="#008A3E"
           icon={
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
@@ -133,7 +145,7 @@ export function DashboardContent({ userName }: Props) {
           title="Pending"
           value={data.stats.pendingReports}
           subtitle="In progress"
-          accentColor={data.stats.pendingReports > 0 ? '#f59e0b' : '#64748b'}
+          accentColor={data.stats.pendingReports > 0 ? '#B8960F' : '#7A7A7A'}
           icon={
             <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />

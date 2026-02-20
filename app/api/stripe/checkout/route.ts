@@ -35,14 +35,14 @@ export async function POST(request: NextRequest) {
     const session = await stripe.checkout.sessions.create({
       customer: customerId,
       mode: 'subscription',
+      ui_mode: 'embedded',
       line_items: [{ price: priceId, quantity: propertyCount }],
-      success_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/billing?success=true`,
-      cancel_url: `${process.env.NEXT_PUBLIC_APP_URL}/pricing?canceled=true`,
+      return_url: `${process.env.NEXT_PUBLIC_APP_URL}/dashboard/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
       metadata: { user_id: userId, tier, billing_cycle: billingCycle, property_count: propertyCount.toString() },
       subscription_data: { metadata: { user_id: userId, tier, billing_cycle: billingCycle, property_count: propertyCount.toString() } },
     })
 
-    return NextResponse.json({ url: session.url })
+    return NextResponse.json({ clientSecret: session.client_secret })
   } catch (error) {
     console.error('Checkout error:', error)
     return NextResponse.json({ error: 'Failed to create checkout session' }, { status: 500 })

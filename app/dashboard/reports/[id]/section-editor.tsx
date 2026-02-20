@@ -16,6 +16,14 @@ type Props = {
   dragHandleProps?: Record<string, unknown>
 }
 
+const W = {
+  accent: '#00B7DB', accentD: '#0EA5C7',
+  bg: '#FFFFFF', bgAlt: '#F7F5F1', bgWarm: '#FAF9F7',
+  text: '#1A1A1A', textMid: '#4A4A4A', textSoft: '#7A7A7A', textMuted: '#A3A3A3',
+  border: '#E8E5E0', borderL: '#F0EDE8',
+  green: '#29581D', red: '#CC0000',
+}
+
 export function SectionEditor({
   sectionId,
   title,
@@ -29,7 +37,6 @@ export function SectionEditor({
   isDragging,
   dragHandleProps,
 }: Props) {
-  const [isExpanded, setIsExpanded] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [editedContent, setEditedContent] = useState(content)
   const [isSaving, setIsSaving] = useState(false)
@@ -42,10 +49,8 @@ export function SectionEditor({
       setIsEditing(false)
       return
     }
-
     setIsSaving(true)
     setSaveStatus('idle')
-
     try {
       await onSave(sectionId, editedContent)
       setSaveStatus('saved')
@@ -75,242 +80,284 @@ export function SectionEditor({
     setEditedContent(content)
   }
 
-  // Unique animation style per section based on order/delay
-  const regenButtonStyle = {
-    background: `linear-gradient(${135 + (animationDelay * 30)}deg, #0891b2, #0d9488, #06b6d4, #14b8a6, #0891b2)`,
-    backgroundSize: '300% 300%',
-    animation: `gradientShift ${3.5 + (animationDelay * 0.4)}s ease infinite`,
-    animationDelay: `${animationDelay * 0.3}s`,
-  }
-
   return (
-    <div
-      className={`border rounded-xl overflow-hidden bg-white transition-all ${
-        isDragging ? 'border-cyan-400 shadow-lg shadow-cyan-100/50 opacity-90' : 'border-slate-200'
-      }`}
-    >
-      {/* Section Header */}
-      <button
-        onClick={() => setIsExpanded(!isExpanded)}
-        className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className={`w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0 transition-colors ${
-              dragHandleProps ? 'bg-slate-100 hover:bg-slate-200 cursor-grab active:cursor-grabbing' : 'bg-slate-100'
-            }`}
-            {...(dragHandleProps || {})}
-            onClick={(e) => {
-              if (dragHandleProps) e.stopPropagation()
+    <div>
+      {/* ── Toolbar ── */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '8px 16px',
+        background: W.bgWarm,
+        borderBottom: `1px solid ${W.borderL}`,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          {!isEditing ? (
+            <button
+              onClick={() => setIsEditing(true)}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                padding: '6px 12px', fontSize: 12, fontWeight: 600,
+                color: W.textMid, background: W.bg,
+                border: `1.5px solid ${W.border}`, borderRadius: 8,
+                cursor: 'pointer', transition: 'all 0.15s',
+              }}
+            >
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
+              </svg>
+              Edit Directly
+            </button>
+          ) : (
+            <>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '6px 14px', fontSize: 12, fontWeight: 600,
+                  color: '#fff', background: W.green,
+                  border: 'none', borderRadius: 8,
+                  cursor: isSaving ? 'not-allowed' : 'pointer',
+                  opacity: isSaving ? 0.6 : 1, transition: 'all 0.15s',
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+                {isSaving ? 'Saving...' : 'Save Changes'}
+              </button>
+              <button
+                onClick={handleCancel}
+                disabled={isSaving}
+                style={{
+                  padding: '6px 12px', fontSize: 12, fontWeight: 500,
+                  color: W.textSoft, background: 'none', border: 'none',
+                  cursor: 'pointer', transition: 'color 0.15s',
+                }}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button
+            onClick={() => setShowRegenPanel(!showRegenPanel)}
+            disabled={isRegenerating || isEditing}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              padding: '6px 12px', fontSize: 12, fontWeight: 600,
+              color: showRegenPanel ? W.accent : W.textMid,
+              background: showRegenPanel ? `${W.accent}08` : W.bg,
+              border: `1.5px solid ${showRegenPanel ? `${W.accent}30` : W.border}`,
+              borderRadius: 8,
+              cursor: (isRegenerating || isEditing) ? 'not-allowed' : 'pointer',
+              opacity: (isRegenerating || isEditing) ? 0.4 : 1,
+              transition: 'all 0.15s',
             }}
           >
-            {dragHandleProps ? (
-              <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
-              </svg>
+            {isRegenerating ? (
+              <>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ animation: 'spin 1s linear infinite' }}>
+                  <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                Regenerating...
+              </>
             ) : (
-              <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m2.25 0H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z"
-                />
+              <>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9.937 15.5A2 2 0 008.5 14.063l-6.135-1.582a.5.5 0 010-.962L8.5 9.936A2 2 0 009.937 8.5l1.582-6.135a.5.5 0 01.962 0L14.063 8.5A2 2 0 0015.5 9.937l6.135 1.582a.5.5 0 010 .962L15.5 14.063a2 2 0 00-1.437 1.437l-1.582 6.135a.5.5 0 01-.962 0z" />
+                </svg>
+                AI Regenerate
+              </>
+            )}
+          </button>
+
+          {onRemove && (
+            <button
+              onClick={() => {
+                if (confirm('Remove this section from the report? You can add it back later.')) {
+                  onRemove(sectionId)
+                }
+              }}
+              disabled={isEditing || isRegenerating}
+              style={{
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 30, height: 30,
+                color: W.textMuted, background: W.bg,
+                border: `1.5px solid ${W.border}`, borderRadius: 8,
+                cursor: (isEditing || isRegenerating) ? 'not-allowed' : 'pointer',
+                opacity: (isEditing || isRegenerating) ? 0.4 : 1,
+                transition: 'all 0.15s',
+              }}
+              title="Remove section"
+              onMouseEnter={(e) => { if (!isEditing && !isRegenerating) { e.currentTarget.style.color = W.red; e.currentTarget.style.borderColor = `${W.red}40`; e.currentTarget.style.background = `${W.red}06` } }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = W.textMuted; e.currentTarget.style.borderColor = W.border; e.currentTarget.style.background = W.bg }}
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
               </svg>
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Content Area */}
+      <div style={{ padding: 16 }}>
+        {isEditing ? (
+          <textarea
+            value={editedContent}
+            onChange={(e) => setEditedContent(e.target.value)}
+            style={{
+              width: '100%', minHeight: 200, padding: 16,
+              border: `1.5px solid ${W.border}`, borderRadius: 10,
+              outline: 'none', resize: 'vertical',
+              fontSize: 14, lineHeight: 1.7, color: W.text,
+              fontFamily: 'inherit',
+              transition: 'border-color 0.2s',
+            }}
+            onFocus={(e) => { e.currentTarget.style.borderColor = W.accent }}
+            onBlur={(e) => { e.currentTarget.style.borderColor = W.border }}
+            placeholder="Enter section content..."
+          />
+        ) : (
+          <div style={{ maxWidth: 'none' }}>
+            {content ? (
+              content.split('\n').map((paragraph, i) =>
+                paragraph.trim() ? (
+                  <p key={i} style={{
+                    fontSize: 14, lineHeight: 1.7, color: W.textMid,
+                    marginBottom: 12,
+                  }}>
+                    {paragraph}
+                  </p>
+                ) : null
+              )
+            ) : (
+              <p style={{ fontSize: 14, color: W.textMuted, fontStyle: 'italic' }}>
+                No content generated for this section.
+              </p>
             )}
           </div>
-          <div className="text-left">
-            <h3 className="font-semibold text-slate-900">{title}</h3>
-            <p className="text-sm text-slate-500">
-              {content ? `${content.split(' ').length} words` : 'No content'}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-3">
-          {saveStatus === 'saved' && (
-            <span className="flex items-center gap-1 text-sm text-green-600">
-              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-              </svg>
-              Saved
-            </span>
-          )}
-          {saveStatus === 'error' && <span className="text-sm text-red-600">Save failed</span>}
-          <svg
-            className={`w-5 h-5 text-slate-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
-          </svg>
-        </div>
-      </button>
+        )}
+      </div>
 
-      {/* Section Content */}
-      {isExpanded && (
-        <div className="border-t border-slate-200">
-          {/* Toolbar */}
-          <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200">
-            <div className="flex items-center gap-2">
-              {!isEditing ? (
-                <button
-                  onClick={() => setIsEditing(true)}
-                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-white border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors"
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931z" />
-                  </svg>
-                  Edit
-                </button>
-              ) : (
-                <>
+      {/* ── AI Regeneration Panel ── */}
+      {showRegenPanel && !isRegenerating && (
+        <div style={{
+          margin: '0 16px 16px',
+          padding: 16,
+          background: `${W.accent}04`,
+          border: `1px solid ${W.accent}15`,
+          borderRadius: 12,
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+            <div style={{
+              width: 32, height: 32, borderRadius: 8, flexShrink: 0,
+              background: `${W.accent}10`, border: `1px solid ${W.accent}20`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={W.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M9.937 15.5A2 2 0 008.5 14.063l-6.135-1.582a.5.5 0 010-.962L8.5 9.936A2 2 0 009.937 8.5l1.582-6.135a.5.5 0 01.962 0L14.063 8.5A2 2 0 0015.5 9.937l6.135 1.582a.5.5 0 010 .962L15.5 14.063a2 2 0 00-1.437 1.437l-1.582 6.135a.5.5 0 01-.962 0z" />
+              </svg>
+            </div>
+            <div style={{ flex: 1 }}>
+              <p style={{ fontSize: 13, fontWeight: 600, color: W.text, marginBottom: 8 }}>
+                What would you like to adjust?
+              </p>
+              <textarea
+                value={regenInstructions}
+                onChange={(e) => setRegenInstructions(e.target.value)}
+                placeholder="e.g. Make it shorter, focus more on revenue trends, add comparison to prior quarter..."
+                style={{
+                  width: '100%', padding: '10px 12px', fontSize: 13,
+                  border: `1.5px solid ${W.border}`, borderRadius: 8,
+                  outline: 'none', resize: 'none',
+                  fontFamily: 'inherit', lineHeight: 1.5,
+                  color: W.text, background: W.bg,
+                  transition: 'border-color 0.2s',
+                }}
+                rows={2}
+                onFocus={(e) => { e.currentTarget.style.borderColor = W.accent }}
+                onBlur={(e) => { e.currentTarget.style.borderColor = W.border }}
+              />
+              <div style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                marginTop: 10,
+              }}>
+                <p style={{ fontSize: 11, color: W.textMuted }}>
+                  Leave empty to regenerate with default settings
+                </p>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                   <button
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors"
+                    onClick={() => { setShowRegenPanel(false); setRegenInstructions('') }}
+                    style={{
+                      padding: '5px 10px', fontSize: 12, fontWeight: 500,
+                      color: W.textSoft, background: 'none', border: 'none',
+                      cursor: 'pointer',
+                    }}
                   >
-                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                    </svg>
-                    {isSaving ? 'Saving...' : 'Save'}
-                  </button>
-                  <button onClick={handleCancel} disabled={isSaving} className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700 transition-colors">
                     Cancel
                   </button>
-                </>
-              )}
-            </div>
-
-            <button
-              onClick={() => setShowRegenPanel(!showRegenPanel)}
-              disabled={isRegenerating || isEditing}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg disabled:opacity-50 transition-all ${
-                showRegenPanel ? 'bg-cyan-50 text-cyan-700 border border-cyan-200' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:text-slate-800'
-              }`}
-            >
-              {isRegenerating ? (
-                <>
-                  <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                  Regenerating...
-                </>
-              ) : (
-                <>
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182" />
-                  </svg>
-                  Regenerate
-                </>
-              )}
-            </button>
-
-            {onRemove && (
-              <button
-                onClick={() => {
-                  if (confirm('Remove this section from the report? You can add it back later.')) {
-                    onRemove(sectionId)
-                  }
-                }}
-                disabled={isEditing || isRegenerating}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-red-500 bg-white border border-slate-200 rounded-lg hover:bg-red-50 hover:border-red-200 disabled:opacity-50 transition-colors"
-                title="Remove section"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
-            )}
-          </div>
-
-          {/* Content Area */}
-          <div className="p-4">
-            {isEditing ? (
-              <textarea
-                value={editedContent}
-                onChange={(e) => setEditedContent(e.target.value)}
-                className="w-full min-h-[200px] p-4 border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none resize-y text-slate-800 leading-relaxed"
-                placeholder="Enter section content..."
-              />
-            ) : (
-              <div className="prose prose-slate max-w-none">
-                {content ? (
-                  content.split('\n').map((paragraph, i) =>
-                    paragraph.trim() ? (
-                      <p key={i} className="text-slate-700 leading-relaxed mb-3">
-                        {paragraph}
-                      </p>
-                    ) : null
-                  )
-                ) : (
-                  <p className="text-slate-400 italic">No content generated for this section.</p>
-                )}
-              </div>
-            )}
-          </div>
-
-          {/* Inline Regeneration Instructions Panel — below content */}
-          {showRegenPanel && !isRegenerating && (
-            <div className="px-4 py-3 bg-cyan-50/50 border-t border-cyan-100">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-lg bg-cyan-100 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <svg className="w-4 h-4 text-cyan-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.129.166 2.27.293 3.423.379.35.026.67.21.865.501L12 21l2.755-4.133a1.14 1.14 0 01.865-.501 48.172 48.172 0 003.423-.379c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-medium text-slate-700 mb-2">Guide the regeneration</p>
-                  <textarea
-                    value={regenInstructions}
-                    onChange={(e) => setRegenInstructions(e.target.value)}
-                    placeholder="e.g. Make it shorter, focus more on revenue trends, less detail on maintenance..."
-                    className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none resize-none bg-white"
-                    rows={2}
-                  />
-                  <div className="flex items-center justify-between mt-2">
-                    <p className="text-xs text-slate-400">Leave empty to regenerate with default instructions</p>
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => {
-                          setShowRegenPanel(false)
-                          setRegenInstructions('')
-                        }}
-                        className="px-3 py-1.5 text-xs font-medium text-slate-500 hover:text-slate-700 transition-colors"
-                      >
-                        Cancel
-                      </button>
-                      <button
-                        onClick={handleRegenerate}
-                        className="inline-flex items-center gap-1 px-3 py-1.5 text-xs font-medium text-white rounded-lg transition-all shadow-sm hover:shadow-md"
-                        style={regenButtonStyle}
-                      >
-                        <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                          <path strokeLinecap="round" strokeLinejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        Regenerate Section
-                      </button>
-                    </div>
-                  </div>
+                  <button
+                    onClick={handleRegenerate}
+                    style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 6,
+                      padding: '7px 14px', fontSize: 12, fontWeight: 600,
+                      color: '#fff', background: W.accent,
+                      border: 'none', borderRadius: 8,
+                      cursor: 'pointer', transition: 'all 0.15s',
+                    }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9.937 15.5A2 2 0 008.5 14.063l-6.135-1.582a.5.5 0 010-.962L8.5 9.936A2 2 0 009.937 8.5l1.582-6.135a.5.5 0 01.962 0L14.063 8.5A2 2 0 0015.5 9.937l6.135 1.582a.5.5 0 010 .962L15.5 14.063a2 2 0 00-1.437 1.437l-1.582 6.135a.5.5 0 01-.962 0z" />
+                    </svg>
+                    Regenerate Section
+                  </button>
                 </div>
               </div>
             </div>
-          )}
-
-          {/* Regenerating indicator */}
-          {isRegenerating && (
-            <div className="px-4 py-3 bg-cyan-50/50 border-t border-cyan-100">
-              <div className="flex items-center gap-3">
-                <div className="w-5 h-5 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin" />
-                <p className="text-sm text-cyan-700 font-medium">Regenerating section with your instructions...</p>
-              </div>
-            </div>
-          )}
+          </div>
         </div>
       )}
+
+      {/* Regenerating indicator */}
+      {isRegenerating && (
+        <div style={{
+          margin: '0 16px 16px',
+          padding: '12px 16px',
+          background: `${W.accent}04`,
+          border: `1px solid ${W.accent}15`,
+          borderRadius: 10,
+          display: 'flex', alignItems: 'center', gap: 10,
+        }}>
+          <div style={{
+            width: 18, height: 18,
+            border: `2px solid ${W.accent}`,
+            borderTopColor: 'transparent',
+            borderRadius: '50%',
+            animation: 'spin 0.8s linear infinite',
+          }} />
+          <p style={{ fontSize: 13, fontWeight: 600, color: W.accent }}>
+            Regenerating with AI...
+          </p>
+        </div>
+      )}
+
+      {saveStatus === 'saved' && (
+        <div style={{
+          margin: '0 16px 12px', padding: '8px 12px',
+          background: `${W.green}08`, border: `1px solid ${W.green}20`,
+          borderRadius: 8, display: 'flex', alignItems: 'center', gap: 6,
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+          <span style={{ fontSize: 12, fontWeight: 600, color: W.green }}>Changes saved</span>
+        </div>
+      )}
+
+      <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
     </div>
   )
 }
+
 
 
 

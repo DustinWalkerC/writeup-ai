@@ -19,34 +19,61 @@ export function EmptyState({
   actionHref,
   onAction 
 }: Props) {
+  const buttonStyle = {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 8,
+    padding: '11px 22px',
+    fontSize: 14,
+    fontWeight: 600,
+    color: '#FFFFFF',
+    background: '#00B7DB',
+    border: 'none',
+    borderRadius: 10,
+    textDecoration: 'none' as const,
+    boxShadow: '0 2px 12px #00B7DB30',
+    cursor: 'pointer',
+    transition: 'all 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
+  }
+
+  const plusIcon = (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+    </svg>
+  )
+
   return (
-    <div className="bg-white rounded-xl border border-slate-200 p-12 text-center">
-      <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-slate-100 text-slate-400 mb-4">
+    <div style={{
+      background: '#FFFFFF', border: '1px solid #E8E5E0', borderRadius: 14,
+      padding: 48, textAlign: 'center',
+    }}>
+      <div style={{
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        width: 64, height: 64, borderRadius: 16,
+        background: '#F7F5F1', border: '1px solid #F0EDE8',
+        color: '#7A7A7A', marginBottom: 16,
+      }}>
         {icon}
       </div>
-      <h3 className="text-lg font-semibold text-slate-900 mb-2">{title}</h3>
-      <p className="text-slate-500 mb-6 max-w-sm mx-auto">{description}</p>
+      <h3 style={{
+        fontFamily: 'var(--font-display, Georgia, serif)',
+        fontSize: 18, fontWeight: 500, color: '#1A1A1A', marginBottom: 8,
+      }}>{title}</h3>
+      <p style={{
+        fontSize: 14, color: '#7A7A7A', marginBottom: 24,
+        maxWidth: 360, marginLeft: 'auto', marginRight: 'auto',
+      }}>{description}</p>
       
       {actionLabel && actionHref && (
-        <Link
-          href={actionHref}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 font-medium transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
+        <Link href={actionHref} style={buttonStyle}>
+          {plusIcon}
           {actionLabel}
         </Link>
       )}
       
       {actionLabel && onAction && !actionHref && (
-        <button
-          onClick={onAction}
-          className="inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 font-medium transition-colors"
-        >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-          </svg>
+        <button onClick={onAction} style={buttonStyle}>
+          {plusIcon}
           {actionLabel}
         </button>
       )}

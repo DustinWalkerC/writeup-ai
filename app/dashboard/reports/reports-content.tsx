@@ -65,7 +65,6 @@ export function ReportsContent() {
     fetchReports()
   }
 
-  // Started = draft, generating, or error (report not yet complete)
   const startedReports = useMemo(() => {
     if (!data?.reports) return []
     return data.reports.filter(r => 
@@ -73,8 +72,6 @@ export function ReportsContent() {
     )
   }, [data?.reports])
 
-  // For Review = complete reports with reviewStatus of 'under_review' or 'review' or undefined/null
-  // This is the default state after a report is generated
   const forReviewReports = useMemo(() => {
     if (!data?.reports) return []
     return data.reports.filter(r => 
@@ -83,7 +80,6 @@ export function ReportsContent() {
     )
   }, [data?.reports])
 
-  // Ready to Send = complete reports marked as ready
   const readyToSendReports = useMemo(() => {
     if (!data?.reports) return []
     return data.reports.filter(r => 
@@ -91,13 +87,11 @@ export function ReportsContent() {
     )
   }, [data?.reports])
 
-  // Sent = complete reports marked as sent (visible here AND in sent archive)
   const sentReports = useMemo(() => {
     if (!data?.reports) return []
     return data.reports.filter(r => r.reviewStatus === 'sent')
   }, [data?.reports])
 
-  // Group sent reports by month for archive view
   const sentReportsByMonth = useMemo(() => {
     const grouped: Record<string, Report[]> = {}
     sentReports.forEach(report => {
@@ -108,7 +102,6 @@ export function ReportsContent() {
     return grouped
   }, [sentReports])
 
-  // Get filtered reports based on active tab
   const filteredReports = useMemo(() => {
     let filtered: Report[] = []
 
@@ -147,17 +140,29 @@ export function ReportsContent() {
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin"></div>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
+        <div style={{
+          width: 32, height: 32, borderRadius: '50%',
+          border: '2.5px solid #E8E5E0', borderTopColor: '#00B7DB',
+          animation: 'spin 0.8s linear infinite',
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
       </div>
     )
   }
 
   if (error) {
     return (
-      <div className="text-center py-12">
-        <p className="text-red-500">{error}</p>
-        <button onClick={fetchReports} className="mt-4 text-cyan-600 hover:text-cyan-700 font-medium">
+      <div style={{ textAlign: 'center', padding: '48px 0' }}>
+        <p style={{ color: '#CC0000', fontSize: 14 }}>{error}</p>
+        <button
+          onClick={fetchReports}
+          style={{
+            marginTop: 16, fontSize: 14, fontWeight: 600,
+            color: '#00B7DB', background: 'none', border: 'none',
+            cursor: 'pointer',
+          }}
+        >
           Try again
         </button>
       </div>
@@ -167,19 +172,31 @@ export function ReportsContent() {
   const hasReports = data?.reports && data.reports.length > 0
 
   return (
-    <div className="space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Reports</h1>
-          <p className="text-slate-500 mt-1">Manage your investor reports</p>
+          <h1 style={{
+            fontFamily: 'var(--font-display, Georgia, serif)',
+            fontSize: 28, fontWeight: 500, color: '#1A1A1A',
+            letterSpacing: '-0.015em',
+          }}>Reports</h1>
+          <p style={{ fontSize: 14, color: '#7A7A7A', marginTop: 4 }}>Manage your investor reports</p>
         </div>
+        {/* New Report = ACCENT (primary action) — no gradient */}
         <Link
           href="/dashboard/reports/new"
-          className="inline-flex items-center gap-2 px-4 py-2.5 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 font-medium transition-all shadow-sm"
+          style={{
+            display: 'inline-flex', alignItems: 'center', gap: 8,
+            padding: '11px 22px', fontSize: 14, fontWeight: 600,
+            color: '#FFFFFF', background: '#00B7DB',
+            border: 'none', borderRadius: 10, textDecoration: 'none',
+            boxShadow: '0 2px 12px #00B7DB30',
+            transition: 'all 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
+          }}
         >
-          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
           </svg>
           New Report
         </Link>
@@ -199,57 +216,71 @@ export function ReportsContent() {
             <StatsCard
               title="For Review"
               value={forReviewReports.length}
-              accentColor="#f59e0b"
+              accentColor="#00B7DB"
               large
               icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>}
             />
             <StatsCard
               title="Ready to Send"
               value={readyToSendReports.length}
-              accentColor="#10b981"
+              accentColor="#008A3E"
               large
               icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
             />
             <StatsCard
               title="Sent"
               value={sentReports.length}
-              accentColor="#94a3b8"
+              accentColor="#7A7A7A"
               large
               icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76" /></svg>}
             />
           </div>
 
           {/* Search and Filters */}
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
             <div className="max-w-md flex-1">
               <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search reports..." />
             </div>
-            <div className="flex gap-1 p-1 bg-slate-100 rounded-lg">
-              {statusTabs.map((tab) => (
-                <button
-                  key={tab.value}
-                  onClick={() => setStatusFilter(tab.value)}
-                  className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                    statusFilter === tab.value
-                      ? 'bg-white text-slate-900 shadow-sm'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
-                >
-                  {tab.label}
-                  {tab.count > 0 && (
-                    <span className={`ml-1.5 px-1.5 py-0.5 text-xs rounded-full ${
-                      statusFilter === tab.value ? 'bg-slate-100' : 'bg-slate-200'
-                    }`}>{tab.count}</span>
-                  )}
-                </button>
-              ))}
+            {/* Filter tabs — warm style */}
+            <div style={{
+              display: 'inline-flex', gap: 4, padding: 4,
+              background: '#FFFFFF', border: '1px solid #F0EDE8', borderRadius: 10,
+            }}>
+              {statusTabs.map((tab) => {
+                const isActive = statusFilter === tab.value
+                return (
+                  <button
+                    key={tab.value}
+                    onClick={() => setStatusFilter(tab.value)}
+                    style={{
+                      padding: '7px 14px', borderRadius: 8,
+                      fontSize: 13, fontWeight: isActive ? 600 : 500,
+                      color: isActive ? '#1A1A1A' : '#7A7A7A',
+                      background: isActive ? '#F7F5F1' : 'transparent',
+                      border: isActive ? '1px solid #F0EDE8' : '1px solid transparent',
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: 6,
+                      transition: 'all 0.2s',
+                    }}
+                  >
+                    {tab.label}
+                    {tab.count > 0 && (
+                      <span style={{
+                        fontSize: 11, fontWeight: 600,
+                        padding: '2px 7px', borderRadius: 100, minWidth: 22, textAlign: 'center',
+                        color: isActive ? '#00B7DB' : '#A3A3A3',
+                        background: isActive ? '#00B7DB10' : '#F7F5F1',
+                      }}>{tab.count}</span>
+                    )}
+                  </button>
+                )
+              })}
             </div>
           </div>
 
           {/* Reports Grid */}
           {statusFilter === 'sent' && filteredReports.length > 0 ? (
-            // Sent tab: group by month
-            <div className="space-y-6">
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               {Object.entries(sentReportsByMonth)
                 .filter(([, reports]) => 
                   !searchQuery || reports.some(r => 
@@ -258,12 +289,16 @@ export function ReportsContent() {
                 )
                 .map(([monthYear, reports]) => (
                   <div key={monthYear}>
-                    <h3 className="text-lg font-semibold text-slate-900 mb-3 flex items-center gap-2">
-                      <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
+                    <h3 style={{
+                      fontFamily: 'var(--font-display, Georgia, serif)',
+                      fontSize: 18, fontWeight: 500, color: '#1A1A1A',
+                      marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8,
+                    }}>
+                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A3A3A3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
                       </svg>
                       {monthYear}
-                      <span className="text-sm font-normal text-slate-400">({reports.length} reports)</span>
+                      <span style={{ fontSize: 13, fontWeight: 400, color: '#A3A3A3' }}>({reports.length} reports)</span>
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                       {reports
@@ -282,8 +317,11 @@ export function ReportsContent() {
               ))}
             </div>
           ) : (
-            <div className="bg-white rounded-xl border border-slate-200 p-8 text-center">
-              <p className="text-slate-500">
+            <div style={{
+              background: '#FFFFFF', border: '1px solid #E8E5E0', borderRadius: 14,
+              padding: 32, textAlign: 'center',
+            }}>
+              <p style={{ color: '#7A7A7A', fontSize: 14 }}>
                 {statusFilter === 'started' && 'No reports in progress'}
                 {statusFilter === 'for_review' && 'No reports awaiting review'}
                 {statusFilter === 'ready_to_send' && 'No reports ready to send'}

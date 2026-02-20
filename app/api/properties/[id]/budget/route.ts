@@ -13,8 +13,8 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
     if (!file) return NextResponse.json({ error: 'File required' }, { status: 400 });
 
     const ext = file.name.split('.').pop()?.toLowerCase();
-    if (ext !== 'xlsx' && ext !== 'xls')
-      return NextResponse.json({ error: 'Budget must be Excel (.xlsx)' }, { status: 400 });
+    if (ext !== 'csv' && ext !== 'xlsx' && ext !== 'xls')
+      return NextResponse.json({ error: 'Budget must be CSV (.csv) or Excel (.xlsx)' }, { status: 400 });
 
     const { data: property } = await supabase
       .from('properties').select('budget_file_path').eq('id', propertyId).eq('user_id', userId).single();

@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { getQuestionsForSections } from '@/lib/question-section-map';
 import type { SectionId } from '@/lib/section-definitions';
 
@@ -29,11 +29,19 @@ export default function Questionnaire({
   const [distNote, setDistNote] = useState(initNote || '');
   const [month, setMonth] = useState(initMonth || new Date().getMonth() + 1);
   const [year, setYear] = useState(initYear || new Date().getFullYear());
+  const [expandedHints, setExpandedHints] = useState<Set<string>>(new Set());
 
-  // Filter questions based on enabled sections
   const questions = useMemo(() => {
     return getQuestionsForSections(enabledSections || null)
   }, [enabledSections])
+
+  const toggleHint = useCallback((questionId: string) => {
+    setExpandedHints(prev => {
+      const next = new Set(prev);
+      if (next.has(questionId)) next.delete(questionId); else next.add(questionId);
+      return next;
+    });
+  }, []);
 
   useEffect(() => {
     const t = setTimeout(() => onAnswersChanged(answers), 500);
@@ -94,7 +102,7 @@ export default function Questionnaire({
         </div>
       </div>
 
-      {/* Section Questions — now dynamically filtered */}
+      {/* Section Questions */}
       <div className="bg-white border border-slate-200 rounded-xl p-6">
         <h3 className="text-lg font-semibold text-slate-900 mb-2">Asset Manager Notes</h3>
         <p className="text-sm text-slate-500 mb-6">
@@ -104,14 +112,44 @@ export default function Questionnaire({
           )}
         </p>
         <div className="space-y-6">
-          {questions.map(q => (
-            <div key={q.id}>
-              <label className="block text-sm font-medium text-slate-700 mb-1">{q.label}</label>
-              <textarea value={answers[q.id] || ''} onChange={e => setAnswers(prev => ({...prev, [q.id]: e.target.value}))}
-                placeholder={q.placeholder} rows={3}
-                className="w-full border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none placeholder-slate-400" />
-            </div>
-          ))}
+          {questions.map(q => {
+            const hintsOpen = expandedHints.has(q.id);
+            const hasHints = q.hints && q.hints.length > 0;
+            return (
+              <div key={q.id}>
+                <div className="flex items-center gap-2 mb-1">
+                  <label className="block text-sm font-medium text-slate-700">{q.label}</label>
+                  {hasHints && (
+                    <button
+                      onClick={() => toggleHint(q.id)}
+                      className={`flex-shrink-0 p-0.5 rounded transition-colors ${hintsOpen ? 'text-amber-500 bg-amber-50' : 'text-amber-400 hover:text-amber-500 hover:bg-amber-50/50'}`}
+                      title="Show writing prompts"
+                    >
+                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+                      </svg>
+                    </button>
+                  )}
+                </div>
+                {hintsOpen && hasHints && (
+                  <div className="mb-2 p-3 bg-gradient-to-r from-cyan-50/80 to-slate-50 rounded-lg border border-cyan-100 text-xs space-y-1">
+                    <p className="font-semibold text-slate-600 mb-1">Consider mentioning:</p>
+                    <ul className="space-y-0.5">
+                      {q.hints.map((hint, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-slate-600 leading-relaxed">
+                          <span className="text-cyan-400 mt-0.5">•</span>
+                          {hint}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                <textarea value={answers[q.id] || ''} onChange={e => setAnswers(prev => ({...prev, [q.id]: e.target.value}))}
+                  placeholder={q.placeholder} rows={3}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-slate-900 text-sm focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 outline-none placeholder-slate-400" />
+              </div>
+            );
+          })}
         </div>
       </div>
     </div>

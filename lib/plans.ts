@@ -1,8 +1,14 @@
-// Client-safe plan configuration
-// NO process.env, NO Stripe SDK — safe for 'use client' components
+// lib/plans.ts
+// Re-exports from pricing-config for backward compatibility.
+// All pricing values now live in lib/pricing-config.ts (single source of truth).
 
-export type PlanTier = 'foundational' | 'professional' | 'institutional'
-export type BillingCycle = 'monthly' | 'quarterly' | 'yearly'
+import {
+  PRICING, BILLING_DISCOUNTS, PLAN_INFO, PLAN_LIMITS,
+  HOURS_SAVED_PER_PROPERTY, getMonthlyEquivalent as _getMonthlyEquivalent,
+  type PlanTier, type BillingCycle,
+} from './pricing-config'
+
+export type { PlanTier, BillingCycle }
 
 export type PriceInfo = {
   amount: number
@@ -19,71 +25,48 @@ export type PlanConfig = {
   prices: Record<BillingCycle, PriceInfo>
 }
 
+// Build the PLANS object from pricing-config (backward-compatible shape)
+function buildPriceInfo(tier: PlanTier, cycle: BillingCycle): PriceInfo {
+  const amount = PRICING[tier][cycle]
+  const discount = BILLING_DISCOUNTS[cycle]
+  if (discount > 0) {
+    const monthlyBase = PRICING[tier].monthly
+    const originalAmount = cycle === 'quarterly' ? monthlyBase * 3 : monthlyBase * 12
+    return { amount, originalAmount, discount }
+  }
+  return { amount }
+}
+
 export const PLANS: Record<PlanTier, PlanConfig> = {
   foundational: {
-    name: 'Foundational',
-    description: 'Essential reports for small portfolios',
-    features: [
-      '1 report per property/month',
-      'Basic financial summary',
-      'PDF export',
-      'Email support',
-    ],
-    limitations: [
-      'No charts or graphs',
-      'No custom branding',
-      'Basic AI analysis',
-    ],
+    ...PLAN_INFO.foundational,
     prices: {
-      monthly: { amount: 75 },
-      quarterly: { amount: 206.33, originalAmount: 225, discount: 8 },
-      yearly: { amount: 747, originalAmount: 900, discount: 17 },
+      monthly: buildPriceInfo('foundational', 'monthly'),
+      quarterly: buildPriceInfo('foundational', 'quarterly'),
+      yearly: buildPriceInfo('foundational', 'yearly'),
     },
   },
   professional: {
-    name: 'Professional',
-    description: 'Full-featured reports for growing firms',
-    featured: true,
-    features: [
-      'Unlimited reports per property',
-      'AI-generated charts & graphs',
-      'Custom branding (logo & colors)',
-      'In-depth data analysis',
-      'T-12 & rent roll parsing',
-      'Priority support',
-    ],
-    limitations: [],
+    ...PLAN_INFO.professional,
     prices: {
-      monthly: { amount: 299 },
-      quarterly: { amount: 822.55, originalAmount: 897, discount: 8 },
-      yearly: { amount: 2978.04, originalAmount: 3588, discount: 17 },
+      monthly: buildPriceInfo('professional', 'monthly'),
+      quarterly: buildPriceInfo('professional', 'quarterly'),
+      yearly: buildPriceInfo('professional', 'yearly'),
     },
   },
   institutional: {
-    name: 'Institutional',
-    description: 'Enterprise-grade for large portfolios',
-    features: [
-      'Everything in Professional',
-      'Custom report templates',
-      'API access',
-      'Dedicated account manager',
-      'Custom integrations',
-      'SLA guarantee',
-    ],
-    limitations: [],
+    ...PLAN_INFO.institutional,
     prices: {
-      monthly: { amount: 750 },
-      quarterly: { amount: 2063.25, originalAmount: 2250, discount: 8 },
-      yearly: { amount: 7470, originalAmount: 9000, discount: 17 },
+      monthly: buildPriceInfo('institutional', 'monthly'),
+      quarterly: buildPriceInfo('institutional', 'quarterly'),
+      yearly: buildPriceInfo('institutional', 'yearly'),
     },
   },
 }
 
 export function getMonthlyEquivalent(tier: PlanTier, cycle: BillingCycle): number {
-  const price = PLANS[tier].prices[cycle].amount
-  switch (cycle) {
-    case 'monthly': return price
-    case 'quarterly': return price / 3
-    case 'yearly': return price / 12
-  }
+  return _getMonthlyEquivalent(tier, cycle)
 }
+
+// Re-export limits and hours for convenience
+export { PLAN_LIMITS, HOURS_SAVED_PER_PROPERTY } from './pricing-config'
