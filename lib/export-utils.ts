@@ -369,6 +369,114 @@ export function generateFilenameFromTemplate(
   const sanitized = filename.replace(/[<>:"/\\|?*]/g, '').trim()
   return `${sanitized}.${format}`
 }
+// ═══════════════════════════════════════════════════════════════
+// lib/export-utils.ts — EMAIL EXPORT ADDITIONS
+// Add these functions to your existing export-utils.ts file.
+// These sit alongside your existing generatePDF(), buildPrintHTML(),
+// and email clipboard functions.
+// ═══════════════════════════════════════════════════════════════
+
+/**
+ * Generate email-optimized HTML via MJML rendering pipeline.
+ * This calls the server-side /api/export-email route which:
+ * 1. Converts charts to PNG images
+ * 2. Uploads images to Supabase storage
+ * 3. Compiles MJML template with all data
+ * 4. Returns clean, email-client-safe HTML
+ *
+ * @param reportId - The report UUID from Supabase
+ * @returns Object with html string and metadata
+ */
+export async function generateEmailHTML(reportId: string): Promise<{
+  html: string;
+  estimatedSizeKB: number;
+  chartCount: number;
+  sectionCount: number;
+  warnings: string[];
+}> {
+  const response = await fetch('/api/export-email', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reportId }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+    throw new Error(error.error || `Email export failed: ${response.status}`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Download the email HTML as a .html file.
+ * User can then import this into their IR software or email tool.
+ *
+ * @param reportId - The report UUID
+ * @param filename - Desired filename (use your existing generateFilenameFromTemplate)
+ */
+export async function downloadEmailHTML(reportId: string, filename: string): Promise<void> {
+  const result = await generateEmailHTML(reportId);
+
+  const blob = new Blob([result.html], { type: 'text/html;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename.replace(/\.(pdf|docx)$/i, '') + '-email.html';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Copy email HTML to clipboard for pasting into email clients.
+ * This is the MJML-powered replacement for the existing clipboard copy.
+ *
+ * @param reportId - The report UUID
+ * @returns true if copy succeeded
+ */
+export async function copyEmailToClipboard(reportId: string): Promise<boolean> {
+  try {
+    const result = await generateEmailHTML(reportId);
+
+    // Use Clipboard API with both HTML and plain text fallback
+    const htmlBlob = new Blob([result.html], { type: 'text/html' });
+    const textBlob = new Blob([stripHTMLForPlainText(result.html)], { type: 'text/plain' });
+
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        'text/html': htmlBlob,
+        'text/plain': textBlob,
+      }),
+    ]);
+
+    return true;
+  } catch (error) {
+    console.error('[copyEmailToClipboard] Error:', error);
+    return false;
+  }
+}
+
+/**
+ * Strip HTML to plain text for clipboard fallback.
+ */
+function stripHTMLForPlainText(html: string): string {
+  return html
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/p>/gi, '\n\n')
+    .replace(/<\/div>/gi, '\n')
+    .replace(/<\/tr>/gi, '\n')
+    .replace(/<\/td>/gi, '\t')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
 
 
 

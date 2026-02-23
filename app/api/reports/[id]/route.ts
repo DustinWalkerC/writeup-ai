@@ -38,8 +38,8 @@ export async function PATCH(
       'name', 'status', 'questionnaire_answers', 'distribution_status',
       'distribution_note', 'selected_month', 'selected_year',
       'generated_sections', 'raw_analysis', 'generation_status',
-      'generation_completed_at', 'generation_config',
-      'input_mode', 'freeform_narrative',
+      'generation_completed_at', 'generation_config', 'input_mode',
+      'freeform_narrative', 'pipeline_stage', 'returned', 'return_note',
     ];
 
     const updateData: Record<string, unknown> = {};
@@ -69,7 +69,7 @@ export async function PATCH(
   }
 }
 
-// DELETE - Delete a report
+// DELETE - Delete a report and its associated files
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -81,16 +81,24 @@ export async function DELETE(
   // Delete associated files from storage first
   const { data: files } = await supabase
     .from('report_files')
-    .select('storage_path')
+    .select('file_path')
     .eq('report_id', id)
     .eq('user_id', userId);
 
   if (files && files.length > 0) {
-    await supabase.storage
-      .from('report-files')
-      .remove(files.map(f => f.storage_path));
+    const paths = files.map(f => f.file_path).filter(Boolean);
+    if (paths.length > 0) {
+      await supabase.storage.from('report-files').remove(paths);
+    }
   }
 
+  // Delete return notes
+  await supabase.from('report_return_notes').delete().eq('report_id', id);
+
+  // Delete report sections
+  await supabase.from('report_sections').delete().eq('report_id', id);
+
+  // Delete the report itself
   const { error } = await supabase
     .from('reports')
     .delete()

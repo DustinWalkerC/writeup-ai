@@ -1,347 +1,259 @@
-'use client'
+// app/dashboard/reports/reports-content.tsx
+'use client';
 
-import { useState, useEffect, useMemo } from 'react'
-import Link from 'next/link'
-import { StatsCard } from '@/components/stats-card'
-import { SearchInput } from '@/components/search-input'
-import { ReportCard } from '@/components/report-card'
-import { EmptyState } from '@/components/empty-state'
+import { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  C, PipelineStage, PIPELINE_STAGES, STAGE_STAT_COLORS,
+  formatReportPeriod, type PipelineReport,
+} from '@/lib/report-pipeline-tokens';
+import { PipelineIcons, getIcon } from '@/components/pipeline-icons';
+import { PipelineCardGrid, PipelineCardList } from '@/components/report-pipeline-card';
+import ReportFilterBar from '@/components/report-filter-bar';
+import VersionStack from '@/components/version-stack';
 
-type Report = {
-  id: string
-  propertyName: string
-  month: string
-  year: number
-  status: string
-  reviewStatus?: string
-  updatedAt: string
+export type { PipelineReport } from '@/lib/report-pipeline-tokens';
+
+// -------------------------------------------------------------------
+// Types
+// -------------------------------------------------------------------
+interface RawReport {
+  id: string;
+  property_id: string;
+  user_id: string;
+  pipeline_stage: PipelineStage;
+  selected_month: number;
+  selected_year: number;
+  updated_at: string;
+  returned?: boolean;
+  return_note?: string;
+  properties: {
+    name: string;
+    address?: string;
+    city?: string;
+    state?: string;
+  };
 }
 
-type ReportsData = {
-  reports: Report[]
-  stats: {
-    total: number
-    complete: number
-    draft: number
-    generating: number
-    error: number
-    thisMonth: number
-    sent: number
-  }
-  currentPeriod: { month: string; year: number }
+interface ReportsContentProps {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  initialReports: any[];
 }
 
-type StatusFilter = 'started' | 'for_review' | 'ready_to_send' | 'sent'
-
-export function ReportsContent() {
-  const [data, setData] = useState<ReportsData | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('for_review')
-
-  useEffect(() => {
-    fetchReports()
-  }, [])
-
-  const fetchReports = async () => {
-    try {
-      const response = await fetch('/api/reports')
-      const result = await response.json()
-      
-      if (result.success) {
-        setData(result.data)
-      } else {
-        setError(result.error || 'Failed to load reports')
-      }
-    } catch (err) {
-      setError('Failed to load reports')
-    } finally {
-      setIsLoading(false)
-    }
-  }
-
-  const handleStatusChange = (reportId: string, newStatus: string) => {
-    fetchReports()
-  }
-
-  const startedReports = useMemo(() => {
-    if (!data?.reports) return []
-    return data.reports.filter(r => 
-      r.status === 'draft' || r.status === 'generating' || r.status === 'error'
-    )
-  }, [data?.reports])
-
-  const forReviewReports = useMemo(() => {
-    if (!data?.reports) return []
-    return data.reports.filter(r => 
-      r.status === 'complete' && 
-      (!r.reviewStatus || r.reviewStatus === 'under_review' || r.reviewStatus === 'review')
-    )
-  }, [data?.reports])
-
-  const readyToSendReports = useMemo(() => {
-    if (!data?.reports) return []
-    return data.reports.filter(r => 
-      r.status === 'complete' && r.reviewStatus === 'ready_to_send'
-    )
-  }, [data?.reports])
-
-  const sentReports = useMemo(() => {
-    if (!data?.reports) return []
-    return data.reports.filter(r => r.reviewStatus === 'sent')
-  }, [data?.reports])
-
-  const sentReportsByMonth = useMemo(() => {
-    const grouped: Record<string, Report[]> = {}
-    sentReports.forEach(report => {
-      const key = `${report.month} ${report.year}`
-      if (!grouped[key]) grouped[key] = []
-      grouped[key].push(report)
-    })
-    return grouped
-  }, [sentReports])
-
-  const filteredReports = useMemo(() => {
-    let filtered: Report[] = []
-
-    switch (statusFilter) {
-      case 'started':
-        filtered = startedReports
-        break
-      case 'for_review':
-        filtered = forReviewReports
-        break
-      case 'ready_to_send':
-        filtered = readyToSendReports
-        break
-      case 'sent':
-        filtered = sentReports
-        break
-    }
-
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase()
-      filtered = filtered.filter(
-        r => r.propertyName.toLowerCase().includes(query) ||
-             `${r.month} ${r.year}`.toLowerCase().includes(query)
-      )
-    }
-
-    return filtered
-  }, [startedReports, forReviewReports, readyToSendReports, sentReports, searchQuery, statusFilter])
-
-  const statusTabs: { value: StatusFilter; label: string; count: number }[] = [
-    { value: 'started', label: 'Started', count: startedReports.length },
-    { value: 'for_review', label: 'For Review', count: forReviewReports.length },
-    { value: 'ready_to_send', label: 'Ready to Send', count: readyToSendReports.length },
-    { value: 'sent', label: 'Sent', count: sentReports.length },
-  ]
-
-  if (isLoading) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 400 }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: '50%',
-          border: '2.5px solid #E8E5E0', borderTopColor: '#00B7DB',
-          animation: 'spin 0.8s linear infinite',
-        }} />
-        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+// -------------------------------------------------------------------
+// Stat Card
+// -------------------------------------------------------------------
+function StatCard({
+  label, count, iconName, color, isActive, onClick,
+}: {
+  label: string; count: number; iconName: string; color: string; isActive: boolean; onClick: () => void;
+}) {
+  const [hover, setHover] = useState(false);
+  return (
+    <button
+      onClick={onClick}
+      onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
+      style={{
+        flex: 1, minWidth: 140, padding: '16px 18px',
+        background: isActive ? `${color}08` : C.bg,
+        border: `1px solid ${isActive ? `${color}30` : C.border}`,
+        borderRadius: 14, cursor: 'pointer', transition: 'all 0.25s',
+        transform: hover ? 'translateY(-1px)' : 'none',
+        boxShadow: hover ? '0 4px 16px rgba(0,0,0,0.04)' : 'none',
+        textAlign: 'left' as const, display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      }}
+    >
+      <div>
+        <div style={{ fontSize: 14, fontWeight: 600, letterSpacing: '0.02em', textTransform: 'uppercase' as const, color: isActive ? color : C.textSoft, marginBottom: 4 }}>
+          {label}
+        </div>
+        <div style={{ fontFamily: "'Newsreader', serif", fontSize: 28, fontWeight: 500, color: isActive ? color : C.text, lineHeight: 1 }}>
+          {count}
+        </div>
       </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div style={{ textAlign: 'center', padding: '48px 0' }}>
-        <p style={{ color: '#CC0000', fontSize: 14 }}>{error}</p>
-        <button
-          onClick={fetchReports}
-          style={{
-            marginTop: 16, fontSize: 14, fontWeight: 600,
-            color: '#00B7DB', background: 'none', border: 'none',
-            cursor: 'pointer',
-          }}
-        >
-          Try again
-        </button>
+      <div style={{ width: 36, height: 36, borderRadius: 10, background: isActive ? `${color}12` : C.bgAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {getIcon(iconName, isActive ? color : C.textSoft, 16)}
       </div>
-    )
-  }
+    </button>
+  );
+}
 
-  const hasReports = data?.reports && data.reports.length > 0
+// -------------------------------------------------------------------
+// Main Content
+// -------------------------------------------------------------------
+export default function ReportsContent({ initialReports }: ReportsContentProps) {
+  const router = useRouter();
+  const [filter, setFilter] = useState('all');
+  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
+  const [searchQuery, setSearchQuery] = useState('');
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const reports: RawReport[] = initialReports.map((r: any) => ({
+    id: r.id,
+    property_id: r.property_id,
+    user_id: r.user_id,
+    pipeline_stage: r.pipeline_stage || 'draft',
+    selected_month: r.selected_month || 1,
+    selected_year: r.selected_year || new Date().getFullYear(),
+    updated_at: r.updated_at,
+    returned: r.returned,
+    return_note: r.return_note,
+    properties: r.properties || { name: 'Unknown Property' },
+  }));
+
+  const pipelineReports = reports.map(r => ({
+    id: r.id,
+    property_name: r.properties.name,
+    period: formatReportPeriod(r.selected_month, r.selected_year),
+    pipeline_stage: r.pipeline_stage as PipelineStage,
+    updated_at: r.updated_at,
+    returned: r.returned,
+    return_note: r.return_note,
+    _property_id: r.property_id,
+    _month: r.selected_month,
+    _year: r.selected_year,
+  }));
+
+  const refreshReports = useCallback(() => {
+    router.refresh();
+  }, [router]);
+
+  const counts: Record<string, number> = {};
+  PIPELINE_STAGES.forEach(s => {
+    counts[s.key] = pipelineReports.filter(r => r.pipeline_stage === s.key).length;
+  });
+
+  const filtered = pipelineReports
+    .filter(r => filter === 'all' || r.pipeline_stage === filter)
+    .filter(r => !searchQuery || r.property_name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+  const groupReports = (list: typeof pipelineReports) => {
+    const map = new Map<string, typeof pipelineReports>();
+    const keys: string[] = [];
+    list.forEach(r => {
+      const k = `${r._property_id}|||${r._month}|||${r._year}`;
+      if (!map.has(k)) { map.set(k, []); keys.push(k); }
+      map.get(k)!.push(r);
+    });
+    return keys.map(k => map.get(k)!);
+  };
+
+  const grouped = groupReports(filtered);
+  const isAllView = filter === 'all';
+  const effectiveView = isAllView ? 'list' : viewMode;
+  const hasReports = reports.length > 0;
+
+  const stats = [
+    { label: 'Draft', count: counts.draft || 0, icon: 'edit', color: STAGE_STAT_COLORS.draft, key: 'draft' },
+    { label: 'In Review', count: counts.in_review || 0, icon: 'eye', color: STAGE_STAT_COLORS.in_review, key: 'in_review' },
+    { label: 'Final Review', count: counts.final_review || 0, icon: 'user', color: STAGE_STAT_COLORS.final_review, key: 'final_review' },
+    { label: 'Ready to Send', count: counts.ready_to_send || 0, icon: 'check', color: STAGE_STAT_COLORS.ready_to_send, key: 'ready_to_send' },
+    { label: 'Archive', count: counts.sent || 0, icon: 'send', color: STAGE_STAT_COLORS.sent, key: 'sent' },
+  ];
+
+  if (!hasReports) {
+    return (
+      <div>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <div>
+            <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 28, fontWeight: 500, color: C.text, margin: 0 }}>Reports</h1>
+            <p style={{ fontSize: 15, color: C.textSoft, marginTop: 4 }}>Manage your investor reports</p>
+          </div>
+        </div>
+        <div style={{ padding: '64px 32px', textAlign: 'center', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14 }}>
+          <div style={{ width: 56, height: 56, borderRadius: 16, background: C.bgAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px' }}>
+            <PipelineIcons.edit color={C.textMuted} size={24} />
+          </div>
+          <h3 style={{ fontFamily: "'Newsreader', serif", fontSize: 20, fontWeight: 500, color: C.text, marginBottom: 8 }}>No reports yet</h3>
+          <p style={{ fontSize: 15, color: C.textSoft, marginBottom: 20 }}>Create your first investor report to get started</p>
+          <button onClick={() => router.push('/dashboard/reports/new')}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 8, padding: '12px 28px', fontSize: 15, fontWeight: 600, color: '#fff', background: C.accent, border: 'none', borderRadius: 10, cursor: 'pointer', boxShadow: `0 2px 12px ${C.accent}30` }}>
+            <PipelineIcons.plus color="#fff" size={16} /> Create Report
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div>
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
-          <h1 style={{
-            fontFamily: 'var(--font-display, Georgia, serif)',
-            fontSize: 28, fontWeight: 500, color: '#1A1A1A',
-            letterSpacing: '-0.015em',
-          }}>Reports</h1>
-          <p style={{ fontSize: 14, color: '#7A7A7A', marginTop: 4 }}>Manage your investor reports</p>
+          <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 28, fontWeight: 500, color: C.text, margin: 0 }}>Reports</h1>
+          <p style={{ fontSize: 15, color: C.textSoft, marginTop: 4 }}>Manage your investor reports</p>
         </div>
-        {/* New Report = ACCENT (primary action) — no gradient */}
-        <Link
-          href="/dashboard/reports/new"
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '11px 22px', fontSize: 14, fontWeight: 600,
-            color: '#FFFFFF', background: '#00B7DB',
-            border: 'none', borderRadius: 10, textDecoration: 'none',
-            boxShadow: '0 2px 12px #00B7DB30',
-            transition: 'all 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
-          }}
-        >
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-          </svg>
-          New Report
-        </Link>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', width: 220, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+            <PipelineIcons.search color={C.textMuted} size={15} />
+            <input type="text" placeholder="Search..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
+              style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 14, color: C.text, fontFamily: 'inherit', width: '100%' }} />
+          </div>
+          <button onClick={() => router.push('/dashboard/reports/new')}
+            style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', fontSize: 15, fontWeight: 600, color: '#fff', background: C.accent, border: 'none', borderRadius: 10, cursor: 'pointer', boxShadow: `0 2px 12px ${C.accent}30` }}>
+            <PipelineIcons.plus color="#fff" size={16} /> New Report
+          </button>
+        </div>
       </div>
 
-      {hasReports && (
-        <>
-          {/* Stats Cards */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            <StatsCard
-              title="This Month"
-              value={data?.stats.thisMonth || 0}
-              subtitle={data?.currentPeriod?.month || ''}
-              large
-              icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" /></svg>}
-            />
-            <StatsCard
-              title="For Review"
-              value={forReviewReports.length}
-              accentColor="#00B7DB"
-              large
-              icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>}
-            />
-            <StatsCard
-              title="Ready to Send"
-              value={readyToSendReports.length}
-              accentColor="#008A3E"
-              large
-              icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>}
-            />
-            <StatsCard
-              title="Sent"
-              value={sentReports.length}
-              accentColor="#7A7A7A"
-              large
-              icon={<svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 19v-8.93a2 2 0 01.89-1.664l7-4.666a2 2 0 012.22 0l7 4.666A2 2 0 0121 10.07V19M3 19a2 2 0 002 2h14a2 2 0 002-2M3 19l6.75-4.5M21 19l-6.75-4.5M3 10l6.75 4.5M21 10l-6.75 4.5m0 0l-1.14.76a2 2 0 01-2.22 0l-1.14-.76" /></svg>}
-            />
-          </div>
+      {/* Stat cards */}
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, overflowX: 'auto', paddingBottom: 4 }}>
+        {stats.map(s => (
+          <StatCard key={s.key} label={s.label} count={s.count} iconName={s.icon} color={s.color} isActive={filter === s.key} onClick={() => setFilter(filter === s.key ? 'all' : s.key)} />
+        ))}
+      </div>
 
-          {/* Search and Filters */}
-          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, alignItems: 'center' }}>
-            <div className="max-w-md flex-1">
-              <SearchInput value={searchQuery} onChange={setSearchQuery} placeholder="Search reports..." />
-            </div>
-            {/* Filter tabs — warm style */}
-            <div style={{
-              display: 'inline-flex', gap: 4, padding: 4,
-              background: '#FFFFFF', border: '1px solid #F0EDE8', borderRadius: 10,
-            }}>
-              {statusTabs.map((tab) => {
-                const isActive = statusFilter === tab.value
-                return (
-                  <button
-                    key={tab.value}
-                    onClick={() => setStatusFilter(tab.value)}
-                    style={{
-                      padding: '7px 14px', borderRadius: 8,
-                      fontSize: 13, fontWeight: isActive ? 600 : 500,
-                      color: isActive ? '#1A1A1A' : '#7A7A7A',
-                      background: isActive ? '#F7F5F1' : 'transparent',
-                      border: isActive ? '1px solid #F0EDE8' : '1px solid transparent',
-                      cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: 6,
-                      transition: 'all 0.2s',
-                    }}
-                  >
-                    {tab.label}
-                    {tab.count > 0 && (
-                      <span style={{
-                        fontSize: 11, fontWeight: 600,
-                        padding: '2px 7px', borderRadius: 100, minWidth: 22, textAlign: 'center',
-                        color: isActive ? '#00B7DB' : '#A3A3A3',
-                        background: isActive ? '#00B7DB10' : '#F7F5F1',
-                      }}>{tab.count}</span>
-                    )}
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+      {/* Filter bar + view toggle */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+        <div style={{ flex: 1 }}>
+          <ReportFilterBar active={filter} onFilter={setFilter} />
+        </div>
+        <div style={{ display: 'inline-flex', padding: 3, background: C.bg, border: `1px solid ${C.borderL}`, borderRadius: 10, opacity: isAllView ? 0.35 : 1, pointerEvents: isAllView ? 'none' : 'auto' }}>
+          {([{ k: 'grid' as const, i: 'gv' }, { k: 'list' as const, i: 'lv' }]).map(v => (
+            <button key={v.k} onClick={() => setViewMode(v.k)}
+              style={{ width: 38, height: 34, display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: 8, cursor: 'pointer', background: viewMode === v.k ? C.bgAlt : 'transparent', border: viewMode === v.k ? `1px solid ${C.borderL}` : '1px solid transparent' }}>
+              {getIcon(v.i, viewMode === v.k ? C.accentAction : C.textMuted, 16)}
+            </button>
+          ))}
+        </div>
+      </div>
 
-          {/* Reports Grid */}
-          {statusFilter === 'sent' && filteredReports.length > 0 ? (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              {Object.entries(sentReportsByMonth)
-                .filter(([, reports]) => 
-                  !searchQuery || reports.some(r => 
-                    r.propertyName.toLowerCase().includes(searchQuery.toLowerCase())
-                  )
-                )
-                .map(([monthYear, reports]) => (
-                  <div key={monthYear}>
-                    <h3 style={{
-                      fontFamily: 'var(--font-display, Georgia, serif)',
-                      fontSize: 18, fontWeight: 500, color: '#1A1A1A',
-                      marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8,
-                    }}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#A3A3A3" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z" />
-                      </svg>
-                      {monthYear}
-                      <span style={{ fontSize: 13, fontWeight: 400, color: '#A3A3A3' }}>({reports.length} reports)</span>
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {reports
-                        .filter(r => !searchQuery || r.propertyName.toLowerCase().includes(searchQuery.toLowerCase()))
-                        .map((report) => (
-                          <ReportCard key={report.id} report={report} onStatusChange={handleStatusChange} />
-                        ))}
-                    </div>
-                  </div>
-                ))}
-            </div>
-          ) : filteredReports.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredReports.map((report) => (
-                <ReportCard key={report.id} report={report} onStatusChange={handleStatusChange} />
-              ))}
-            </div>
-          ) : (
-            <div style={{
-              background: '#FFFFFF', border: '1px solid #E8E5E0', borderRadius: 14,
-              padding: 32, textAlign: 'center',
-            }}>
-              <p style={{ color: '#7A7A7A', fontSize: 14 }}>
-                {statusFilter === 'started' && 'No reports in progress'}
-                {statusFilter === 'for_review' && 'No reports awaiting review'}
-                {statusFilter === 'ready_to_send' && 'No reports ready to send'}
-                {statusFilter === 'sent' && 'No sent reports yet'}
-              </p>
-            </div>
-          )}
-        </>
+      {/* Report cards */}
+      {effectiveView === 'grid' ? (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
+          {grouped.map((group, i) => (
+            <VersionStack
+              key={i} reports={group} isGrid
+              renderCard={(r, stk, ver) => (
+                <PipelineCardGrid report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} />
+              )}
+              renderListCard={(r, stk, ver) => (
+                <PipelineCardList report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} showHint={false} />
+              )}
+            />
+          ))}
+        </div>
+      ) : (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          {grouped.map((group, i) => (
+            <VersionStack
+              key={i} reports={group} isGrid={false}
+              renderCard={(r, stk, ver) => (
+                <PipelineCardList report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} showHint={!isAllView} />
+              )}
+            />
+          ))}
+        </div>
       )}
 
-      {!hasReports && (
-        <EmptyState
-          icon={<svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>}
-          title="No reports yet"
-          description="Create your first investor report to get started"
-          actionLabel="Create Report"
-          actionHref="/dashboard/reports/new"
-        />
+      {/* Empty filter state */}
+      {filtered.length === 0 && hasReports && (
+        <div style={{ padding: '64px 32px', textAlign: 'center', background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14 }}>
+          <h3 style={{ fontFamily: "'Newsreader', serif", fontSize: 18, fontWeight: 500, color: C.text, marginBottom: 8 }}>No reports in this stage</h3>
+          <p style={{ fontSize: 14, color: C.textSoft }}>Reports will appear here once they reach this stage.</p>
+        </div>
       )}
     </div>
-  )
+  );
 }
 
