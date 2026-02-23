@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { Suspense, useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { loadStripe } from '@stripe/stripe-js'
@@ -27,7 +27,7 @@ const CYCLE_MONTHS: Record<BillingCycle, number> = {
 
 type Step = 'configure' | 'payment'
 
-export default function CheckoutPage() {
+function CheckoutContent() {
   const searchParams = useSearchParams()
 
   const tierParam = searchParams.get('tier') as PlanTier | null
@@ -46,6 +46,7 @@ export default function CheckoutPage() {
   const [error, setError] = useState<string | null>(null)
 
   const containerRef = useRef<HTMLDivElement>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const checkoutRef = useRef<any>(null)
 
   const plan = PLAN_INFO[tier]
@@ -412,5 +413,17 @@ export default function CheckoutPage() {
         </div>
       )}
     </div>
+  )
+}
+
+export default function CheckoutPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex items-center justify-center min-h-[60vh]">
+        <div className="w-6 h-6 border-2 border-cyan-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    }>
+      <CheckoutContent />
+    </Suspense>
   )
 }
