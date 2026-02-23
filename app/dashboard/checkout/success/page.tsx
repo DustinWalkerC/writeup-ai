@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 
-export default function CheckoutSuccessPage() {
+function SuccessContent() {
   const searchParams = useSearchParams()
   const router = useRouter()
   const sessionId = searchParams.get('session_id')
@@ -15,7 +15,6 @@ export default function CheckoutSuccessPage() {
       setStatus('error')
       return
     }
-    // Give webhooks a moment to process, then show success
     const timer = setTimeout(() => setStatus('success'), 1500)
     return () => clearTimeout(timer)
   }, [sessionId])
@@ -59,19 +58,26 @@ export default function CheckoutSuccessPage() {
         Your subscription is active. Time to start generating reports.
       </p>
       <div className="flex flex-col sm:flex-row gap-3 justify-center">
-        <Link
-          href="/dashboard/properties"
-          className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white font-semibold rounded-xl hover:from-cyan-700 hover:to-teal-700 transition-all shadow-lg shadow-cyan-500/20"
-        >
+        <Link href="/dashboard/properties" className="px-6 py-3 bg-gradient-to-r from-cyan-600 to-teal-600 text-white font-semibold rounded-xl hover:from-cyan-700 hover:to-teal-700 transition-all shadow-lg shadow-cyan-500/20">
           Add Your First Property
         </Link>
-        <Link
-          href="/dashboard/billing"
-          className="px-6 py-3 bg-white text-slate-700 font-semibold rounded-xl border border-slate-200 hover:bg-slate-50 transition-all"
-        >
+        <Link href="/dashboard/billing" className="px-6 py-3 bg-white text-slate-700 font-semibold rounded-xl border border-slate-200 hover:bg-slate-50 transition-all">
           View Billing
         </Link>
       </div>
     </div>
+  )
+}
+
+export default function CheckoutSuccessPage() {
+  return (
+    <Suspense fallback={
+      <div className="max-w-lg mx-auto py-20 text-center">
+        <div className="w-12 h-12 border-3 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-6" />
+        <h2 className="text-xl font-bold text-slate-900">Loading...</h2>
+      </div>
+    }>
+      <SuccessContent />
+    </Suspense>
   )
 }
