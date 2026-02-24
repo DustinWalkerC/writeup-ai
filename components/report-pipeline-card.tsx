@@ -152,7 +152,7 @@ function MoreMenu({ report, onStageChange, onReturn }: { report: PipelineReport;
             <PipelineIcons.eye color={C.textSoft} size={16} /> View Report
           </button>
           {isDl && (
-            <button onClick={() => { close(); window.open(`/api/reports/${report.id}/export?format=pdf`, '_blank'); }} style={itemStyle}
+            <button onClick={() => { close(); router.push(`/dashboard/reports/${report.id}`); }} style={itemStyle}
               onMouseEnter={e => (e.currentTarget.style.background = C.bgAlt)} onMouseLeave={e => (e.currentTarget.style.background = 'none')}>
               <PipelineIcons.dl color={C.textSoft} size={16} /> Download PDF
             </button>
@@ -264,6 +264,8 @@ export function PipelineCardGrid({ report: r, stackCount, versionLabel, onStageC
   const act = STAGE_ACTIONS[r.pipeline_stage];
   const pct = getStageProgress(r.pipeline_stage);
 
+  const isReadyToSend = r.pipeline_stage === 'ready_to_send';
+
   const handlePrimary = async () => {
     if (r.pipeline_stage === 'draft') { router.push(`/dashboard/reports/${r.id}/edit`); return; }
     const target = PRIMARY_TARGETS[r.pipeline_stage];
@@ -337,10 +339,20 @@ export function PipelineCardGrid({ report: r, stackCount, versionLabel, onStageC
               <PipelineIcons.check color={C.greenBtn} size={15} /> Delivered
             </div>
           )}
-          <button onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)}
-            style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 14px', fontSize: 14, fontWeight: 500, color: viewHover ? C.accentAction : C.textMid, background: viewHover ? `${C.accentAction}08` : C.bgAlt, border: `1px solid ${viewHover ? `${C.accentAction}30` : C.borderL}`, borderRadius: 10, cursor: 'pointer', transition: 'background 0.2s, color 0.2s, border-color 0.2s', flexShrink: 0, whiteSpace: 'nowrap' }}>
-            <PipelineIcons.eye color={viewHover ? C.accentAction : C.textSoft} size={15} /> View
-          </button>
+
+          {/* Ready to Send → Download button; all others → View button */}
+          {isReadyToSend ? (
+            <button onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 14px', fontSize: 14, fontWeight: 600, color: viewHover ? '#fff' : C.accentAction, background: viewHover ? C.accentAction : `${C.accentAction}08`, border: `1px solid ${viewHover ? C.accentAction : `${C.accentAction}30`}`, borderRadius: 10, cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0, whiteSpace: 'nowrap' }}>
+              <PipelineIcons.dl color={viewHover ? '#fff' : C.accentAction} size={15} /> Download
+            </button>
+          ) : (
+            <button onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)}
+              style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 14px', fontSize: 14, fontWeight: 500, color: viewHover ? C.accentAction : C.textMid, background: viewHover ? `${C.accentAction}08` : C.bgAlt, border: `1px solid ${viewHover ? `${C.accentAction}30` : C.borderL}`, borderRadius: 10, cursor: 'pointer', transition: 'background 0.2s, color 0.2s, border-color 0.2s', flexShrink: 0, whiteSpace: 'nowrap' }}>
+              <PipelineIcons.eye color={viewHover ? C.accentAction : C.textSoft} size={15} /> View
+            </button>
+          )}
+
           <MoreMenu report={r} onStageChange={onStageChange} onReturn={r.pipeline_stage === 'final_review' ? () => setShowReturn(true) : undefined} />
         </div>
       </div>
@@ -363,6 +375,8 @@ export function PipelineCardList({ report: r, stackCount, versionLabel, onStageC
   const stg = PIPELINE_STAGES[idx];
   const act = STAGE_ACTIONS[r.pipeline_stage];
   const pct = getStageProgress(r.pipeline_stage);
+
+  const isReadyToSend = r.pipeline_stage === 'ready_to_send';
 
   const handlePrimary = async () => {
     if (r.pipeline_stage === 'draft') { router.push(`/dashboard/reports/${r.id}/edit`); return; }
@@ -433,10 +447,18 @@ export function PipelineCardList({ report: r, stackCount, versionLabel, onStageC
           )}
         </div>
 
-        <button onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)} title="View Report"
-          style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', background: viewHover ? `${C.accentAction}08` : C.bgAlt, border: `1px solid ${viewHover ? `${C.accentAction}30` : C.borderL}`, borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s, border-color 0.2s' }}>
-          <PipelineIcons.eye color={viewHover ? C.accentAction : C.textSoft} size={16} />
-        </button>
+        {/* Ready to Send → Download button; all others → View button */}
+        {isReadyToSend ? (
+          <button onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)} title="Download Report"
+            style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', background: viewHover ? `${C.accentAction}15` : `${C.accentAction}08`, border: `1px solid ${viewHover ? `${C.accentAction}40` : `${C.accentAction}20`}`, borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s, border-color 0.2s' }}>
+            <PipelineIcons.dl color={viewHover ? C.accentAction : C.accentText} size={16} />
+          </button>
+        ) : (
+          <button onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)} title="View Report"
+            style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', background: viewHover ? `${C.accentAction}08` : C.bgAlt, border: `1px solid ${viewHover ? `${C.accentAction}30` : C.borderL}`, borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s, border-color 0.2s' }}>
+            <PipelineIcons.eye color={viewHover ? C.accentAction : C.textSoft} size={16} />
+          </button>
+        )}
 
         <MoreMenu report={r} onStageChange={onStageChange} onReturn={r.pipeline_stage === 'final_review' ? () => setShowReturn(true) : undefined} />
       </div>

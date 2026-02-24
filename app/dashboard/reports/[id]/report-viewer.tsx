@@ -16,7 +16,6 @@ import {
   generateStandaloneHTML,
   downloadHTML,
   copyRichHTMLToClipboard,
-  generateFilename,
   generateFilenameFromTemplate,
   generateEmailHTML,
   downloadEmailHTML,
@@ -131,8 +130,7 @@ function separateContentLegacy(content: string): { narrative: string; chartHTML:
   let cMatch
   while ((cMatch = chartRegex.exec(content)) !== null) {
     const block = cMatch[0]
-    if (!block.includes('display:') && !block.includes('grid') && !block.includes('border-radius') && block.length < 200)
-      continue
+    if (!block.includes('display:') && !block.includes('grid') && !block.includes('border-radius') && block.length < 200) continue
     chartParts.push(block)
   }
 
@@ -695,13 +693,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       </div>
 
       {/* ── Content Area ── */}
-      <div
-        style={
-          viewMode === 'sections'
-            ? { padding: '32px 0', background: W.bgAlt }
-            : { padding: '32px 0', background: W.bgAlt }
-        }
-      >
+      <div style={viewMode === 'sections' ? { padding: '32px 0', background: W.bgAlt } : { padding: '32px 0', background: W.bgAlt }}>
         {/* FORMATTED VIEW — paper container (report content fonts unchanged) */}
         {viewMode === 'formatted' && (
           <div
@@ -718,52 +710,54 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
           >
             {hasGeneratedSections ? (
               <div>
-                {orderedSections.filter((s) => s.content).map((section, idx) => {
-                  const { narrative, chartHTML } = getDisplayContent(section)
-                  return (
-                    <div key={section.id} data-section={section.id} style={{ marginBottom: '36px' }}>
-                      {chartHTML && idx === 0 && (
-                        <div
-                          data-chart="header"
-                          style={{ marginBottom: '24px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
-                          dangerouslySetInnerHTML={{ __html: chartHTML }}
-                        />
-                      )}
-                      <h2
-                        style={{
-                          fontSize: '19px',
-                          fontWeight: 700,
-                          color: '#0f172a',
-                          marginBottom: '14px',
-                          paddingBottom: '8px',
-                          borderBottom: idx === 0 ? 'none' : `2px solid ${accentColor}20`,
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '10px',
-                        }}
-                      >
-                        <span style={{ display: 'inline-block', width: '4px', height: '20px', background: accentColor, borderRadius: '2px' }} />
-                        {section.title}
-                      </h2>
-                      {idx !== 0 && section.metrics && section.metrics.length > 0 && (
-                        <div data-metrics={section.id} dangerouslySetInnerHTML={{ __html: renderMetricCards(section.metrics, accentColor) }} />
-                      )}
-                      {narrative && (
-                        <div
-                          style={{ fontSize: '14px', lineHeight: '1.7', color: '#334155' }}
-                          dangerouslySetInnerHTML={{ __html: renderNarrativeContent(narrative) }}
-                        />
-                      )}
-                      {chartHTML && idx !== 0 && (
-                        <div
-                          data-chart={section.id}
-                          style={{ marginTop: '20px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
-                          dangerouslySetInnerHTML={{ __html: chartHTML }}
-                        />
-                      )}
-                    </div>
-                  )
-                })}
+                {orderedSections
+                  .filter((s) => s.content)
+                  .map((section, idx) => {
+                    const { narrative, chartHTML } = getDisplayContent(section)
+                    return (
+                      <div key={section.id} data-section={section.id} style={{ marginBottom: '36px' }}>
+                        {chartHTML && idx === 0 && (
+                          <div
+                            data-chart="header"
+                            style={{ marginBottom: '24px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
+                            dangerouslySetInnerHTML={{ __html: chartHTML }}
+                          />
+                        )}
+                        <h2
+                          style={{
+                            fontSize: '19px',
+                            fontWeight: 700,
+                            color: '#0f172a',
+                            marginBottom: '14px',
+                            paddingBottom: '8px',
+                            borderBottom: idx === 0 ? 'none' : `2px solid ${accentColor}20`,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                          }}
+                        >
+                          <span style={{ display: 'inline-block', width: '4px', height: '20px', background: accentColor, borderRadius: '2px' }} />
+                          {section.title}
+                        </h2>
+                        {idx !== 0 && section.metrics && section.metrics.length > 0 && (
+                          <div data-metrics={section.id} dangerouslySetInnerHTML={{ __html: renderMetricCards(section.metrics, accentColor) }} />
+                        )}
+                        {narrative && (
+                          <div
+                            style={{ fontSize: '14px', lineHeight: '1.7', color: '#334155' }}
+                            dangerouslySetInnerHTML={{ __html: renderNarrativeContent(narrative) }}
+                          />
+                        )}
+                        {chartHTML && idx !== 0 && (
+                          <div
+                            data-chart={section.id}
+                            style={{ marginTop: '20px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
+                            dangerouslySetInnerHTML={{ __html: chartHTML }}
+                          />
+                        )}
+                      </div>
+                    )
+                  })}
                 {userSettings?.custom_disclaimer && (
                   <div style={{ marginTop: '48px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
                     <p style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>{userSettings.custom_disclaimer}</p>
@@ -779,225 +773,225 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         {/* EDIT SECTIONS VIEW */}
         {viewMode === 'sections' && (
           <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
-            {orderedSections.filter((s) => s.content).map((section, index) => {
-              const { narrative, chartHTML } = getDisplayContent(section)
-              const isDragging = draggedIndex === index
-              const isDragOver = dragOverIndex === index && draggedIndex !== index
-              const isOpen = expandedSections.has(section.id)
-              return (
-                <div
-                  key={section.id}
-                  draggable
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={(e) => handleDragOver(e, index)}
-                  onDrop={() => handleDrop(index)}
-                  onDragEnd={handleDragEnd}
-                  style={{
-                    background: W.bg,
-                    border: `1px solid ${isDragOver ? W.accent : W.border}`,
-                    borderRadius: 14,
-                    overflow: 'hidden',
-                    opacity: isDragging ? 0.5 : 1,
-                    transition: 'all 0.2s',
-                    boxShadow: isDragOver ? `0 0 0 2px ${W.accent}20` : 'none',
-                  }}
-                >
-                  {/* Section header bar — always visible, clickable to expand */}
+            {orderedSections
+              .filter((s) => s.content)
+              .map((section, index) => {
+                const { narrative, chartHTML } = getDisplayContent(section)
+                const isDragging = draggedIndex === index
+                const isDragOver = dragOverIndex === index && draggedIndex !== index
+                const isOpen = expandedSections.has(section.id)
+                return (
                   <div
-                    onClick={() => toggleSection(section.id)}
+                    key={section.id}
+                    draggable
+                    onDragStart={() => handleDragStart(index)}
+                    onDragOver={(e) => handleDragOver(e, index)}
+                    onDrop={() => handleDrop(index)}
+                    onDragEnd={handleDragEnd}
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 12,
-                      padding: '12px 16px',
-                      background: isOpen ? W.bgWarm : W.bg,
-                      borderBottom: isOpen ? `1px solid ${W.borderL}` : 'none',
-                      cursor: 'pointer',
-                      transition: 'background 0.15s',
+                      background: W.bg,
+                      border: `1px solid ${isDragOver ? W.accent : W.border}`,
+                      borderRadius: 14,
+                      overflow: 'hidden',
+                      opacity: isDragging ? 0.5 : 1,
+                      transition: 'all 0.2s',
+                      boxShadow: isDragOver ? `0 0 0 2px ${W.accent}20` : 'none',
                     }}
                   >
-                    {/* Drag grip */}
+                    {/* Section header bar — always visible, clickable to expand */}
                     <div
-                      onClick={(e) => e.stopPropagation()}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      style={{ cursor: 'grab', flexShrink: 0 }}
+                      onClick={() => toggleSection(section.id)}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: 12,
+                        padding: '12px 16px',
+                        background: isOpen ? W.bgWarm : W.bg,
+                        borderBottom: isOpen ? `1px solid ${W.borderL}` : 'none',
+                        cursor: 'pointer',
+                        transition: 'background 0.15s',
+                      }}
                     >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
-                        <circle cx="9" cy="6" r="1.5" fill={W.textMuted} />
-                        <circle cx="15" cy="6" r="1.5" fill={W.textMuted} />
-                        <circle cx="9" cy="12" r="1.5" fill={W.textMuted} />
-                        <circle cx="15" cy="12" r="1.5" fill={W.textMuted} />
-                        <circle cx="9" cy="18" r="1.5" fill={W.textMuted} />
-                        <circle cx="15" cy="18" r="1.5" fill={W.textMuted} />
+                      {/* Drag grip */}
+                      <div onClick={(e) => e.stopPropagation()} onMouseDown={(e) => e.stopPropagation()} style={{ cursor: 'grab', flexShrink: 0 }}>
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" style={{ flexShrink: 0 }}>
+                          <circle cx="9" cy="6" r="1.5" fill={W.textMuted} />
+                          <circle cx="15" cy="6" r="1.5" fill={W.textMuted} />
+                          <circle cx="9" cy="12" r="1.5" fill={W.textMuted} />
+                          <circle cx="15" cy="12" r="1.5" fill={W.textMuted} />
+                          <circle cx="9" cy="18" r="1.5" fill={W.textMuted} />
+                          <circle cx="15" cy="18" r="1.5" fill={W.textMuted} />
+                        </svg>
+                      </div>
+
+                      {/* Number badge */}
+                      <div
+                        style={{
+                          width: 26,
+                          height: 26,
+                          borderRadius: 8,
+                          flexShrink: 0,
+                          background: isOpen ? `${W.accent}10` : W.bgAlt,
+                          border: `1px solid ${isOpen ? `${W.accent}20` : W.borderL}`,
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: isOpen ? W.accent : W.textMuted,
+                          transition: 'all 0.2s',
+                        }}
+                      >
+                        {index + 1}
+                      </div>
+
+                      {/* Title + meta */}
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: isOpen ? W.text : W.textMid }}>{section.title}</div>
+                        <div style={{ fontSize: 11, color: W.textMuted, marginTop: 1 }}>
+                          {(narrative || section.content).split(/\s+/).filter(Boolean).length} words
+                          {section.metrics && section.metrics.length > 0 ? ` · ${section.metrics.length} metrics` : ''}
+                          {chartHTML ? ' · chart' : ''}
+                        </div>
+                      </div>
+
+                      {/* Chevron */}
+                      <svg
+                        width="18"
+                        height="18"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke={W.textMuted}
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        style={{
+                          transition: 'transform 0.25s cubic-bezier(0.22,1,0.36,1)',
+                          transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                          flexShrink: 0,
+                        }}
+                      >
+                        <polyline points="6 9 12 15 18 9" />
                       </svg>
                     </div>
 
-                    {/* Number badge */}
-                    <div
-                      style={{
-                        width: 26,
-                        height: 26,
-                        borderRadius: 8,
-                        flexShrink: 0,
-                        background: isOpen ? `${W.accent}10` : W.bgAlt,
-                        border: `1px solid ${isOpen ? `${W.accent}20` : W.borderL}`,
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: 12,
-                        fontWeight: 700,
-                        color: isOpen ? W.accent : W.textMuted,
-                        transition: 'all 0.2s',
-                      }}
-                    >
-                      {index + 1}
-                    </div>
+                    {/* ── Expanded content: metrics + editor + chart ── */}
+                    {isOpen && (
+                      <div>
+                        {/* Metrics */}
+                        {section.metrics && section.metrics.length > 0 && (
+                          <div
+                            style={{ padding: '12px 16px', borderBottom: `1px solid ${W.borderL}` }}
+                            dangerouslySetInnerHTML={{ __html: renderMetricCards(section.metrics, accentColor) }}
+                          />
+                        )}
 
-                    {/* Title + meta */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 14, fontWeight: 600, color: isOpen ? W.text : W.textMid }}>{section.title}</div>
-                      <div style={{ fontSize: 11, color: W.textMuted, marginTop: 1 }}>
-                        {(narrative || section.content).split(/\s+/).filter(Boolean).length} words
-                        {section.metrics && section.metrics.length > 0 ? ` · ${section.metrics.length} metrics` : ''}
-                        {chartHTML ? ' · chart' : ''}
-                      </div>
-                    </div>
-
-                    {/* Chevron */}
-                    <svg
-                      width="18"
-                      height="18"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke={W.textMuted}
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      style={{
-                        transition: 'transform 0.25s cubic-bezier(0.22,1,0.36,1)',
-                        transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
-                        flexShrink: 0,
-                      }}
-                    >
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </div>
-
-                  {/* ── Expanded content: metrics + editor + chart ── */}
-                  {isOpen && (
-                    <div>
-                      {/* Metrics */}
-                      {section.metrics && section.metrics.length > 0 && (
-                        <div
-                          style={{ padding: '12px 16px', borderBottom: `1px solid ${W.borderL}` }}
-                          dangerouslySetInnerHTML={{ __html: renderMetricCards(section.metrics, accentColor) }}
+                        {/* Section editor */}
+                        <SectionEditor
+                          sectionId={section.id}
+                          title={section.title}
+                          content={narrative || section.content}
+                          order={section.order}
+                          onSave={handleSaveSection}
+                          onRegenerate={handleRegenerateSection}
+                          onRemove={handleRemoveSection}
+                          isRegenerating={regeneratingSection === section.id}
+                          animationDelay={index}
+                          isDragging={isDragging}
+                          dragHandleProps={{ onMouseDown: (e: React.MouseEvent) => e.stopPropagation() }}
                         />
-                      )}
 
-                      {/* Section editor */}
-                      <SectionEditor
-                        sectionId={section.id}
-                        title={section.title}
-                        content={narrative || section.content}
-                        order={section.order}
-                        onSave={handleSaveSection}
-                        onRegenerate={handleRegenerateSection}
-                        onRemove={handleRemoveSection}
-                        isRegenerating={regeneratingSection === section.id}
-                        animationDelay={index}
-                        isDragging={isDragging}
-                        dragHandleProps={{ onMouseDown: (e: React.MouseEvent) => e.stopPropagation() }}
-                      />
-
-                      {/* Chart */}
-                      {chartHTML && (
-                        <div style={{ padding: '0 16px 16px' }}>
-                          <div style={{ borderRadius: 10, border: `1px solid ${W.borderL}`, overflow: 'hidden', background: W.bgWarm }}>
-                            <div style={{ padding: 16, maxWidth: 960 }} dangerouslySetInnerHTML={{ __html: chartHTML }} />
+                        {/* Chart */}
+                        {chartHTML && (
+                          <div style={{ padding: '0 16px 16px' }}>
+                            <div style={{ borderRadius: 10, border: `1px solid ${W.borderL}`, overflow: 'hidden', background: W.bgWarm }}>
+                              <div style={{ padding: 16, maxWidth: 960 }} dangerouslySetInnerHTML={{ __html: chartHTML }} />
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
 
             {/* Empty sections */}
-            {orderedSections.filter((s) => s.content === '' && sections[s.id]).map((section) => (
-              <div
-                key={section.id}
-                style={{
-                  border: `1px dashed ${W.border}`,
-                  borderRadius: 14,
-                  padding: '14px 16px',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  background: W.bgWarm,
-                }}
-              >
-                <div>
-                  <h3 style={{ fontSize: 14, fontWeight: 600, color: W.textMid }}>{section.title}</h3>
-                  <p style={{ fontSize: 12, color: W.textMuted, marginTop: 2 }}>No content yet</p>
+            {orderedSections
+              .filter((s) => s.content === '' && sections[s.id])
+              .map((section) => (
+                <div
+                  key={section.id}
+                  style={{
+                    border: `1px dashed ${W.border}`,
+                    borderRadius: 14,
+                    padding: '14px 16px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    background: W.bgWarm,
+                  }}
+                >
+                  <div>
+                    <h3 style={{ fontSize: 14, fontWeight: 600, color: W.textMid }}>{section.title}</h3>
+                    <p style={{ fontSize: 12, color: W.textMuted, marginTop: 2 }}>No content yet</p>
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <button
+                      onClick={() => handleRegenerateSection(section.id)}
+                      disabled={regeneratingSection === section.id}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 6,
+                        padding: '7px 14px',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: '#fff',
+                        background: W.accent,
+                        border: 'none',
+                        borderRadius: 8,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      {regeneratingSection === section.id ? (
+                        <>
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="#fff"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="animate-spin"
+                          >
+                            <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                          </svg>
+                          Generating...
+                        </>
+                      ) : (
+                        <>
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M13 10V3L4 14h7v7l9-11h-7z" />
+                          </svg>
+                          Generate
+                        </>
+                      )}
+                    </button>
+                    <button
+                      onClick={() => handleRemoveSection(section.id)}
+                      style={{ padding: 6, border: 'none', background: 'none', cursor: 'pointer', color: W.textMuted, borderRadius: 6 }}
+                      title="Remove"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <button
-                    onClick={() => handleRegenerateSection(section.id)}
-                    disabled={regeneratingSection === section.id}
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      padding: '7px 14px',
-                      fontSize: 13,
-                      fontWeight: 600,
-                      color: '#fff',
-                      background: W.accent,
-                      border: 'none',
-                      borderRadius: 8,
-                      cursor: 'pointer',
-                    }}
-                  >
-                    {regeneratingSection === section.id ? (
-                      <>
-                        <svg
-                          width="14"
-                          height="14"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="#fff"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="animate-spin"
-                        >
-                          <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                        </svg>
-                        Generating...
-                      </>
-                    ) : (
-                      <>
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="M13 10V3L4 14h7v7l9-11h-7z" />
-                        </svg>
-                        Generate
-                      </>
-                    )}
-                  </button>
-                  <button
-                    onClick={() => handleRemoveSection(section.id)}
-                    style={{ padding: 6, border: 'none', background: 'none', cursor: 'pointer', color: W.textMuted, borderRadius: 6 }}
-                    title="Remove"
-                  >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            ))}
+              ))}
 
             {/* Add Section */}
             <div style={{ position: 'relative', paddingTop: 4 }}>
@@ -1180,20 +1174,14 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                 <div style={{ fontSize: 11, color: W.textMuted, marginTop: 2 }}>
                   How your report will render in email clients
                   {emailPreviewSize && <span style={{ marginLeft: 8 }}> · {emailPreviewSize}KB</span>}
-                  {emailPreviewSize && emailPreviewSize < 102 && (
-                    <span style={{ marginLeft: 4, color: W.green, fontWeight: 600 }}> (under Gmail limit)</span>
-                  )}
+                  {emailPreviewSize && emailPreviewSize < 102 && <span style={{ marginLeft: 4, color: W.green, fontWeight: 600 }}> (under Gmail limit)</span>}
                 </div>
               </div>
 
-              {/* ✅ Edit 2: Replace ENTIRE button group */}
               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                 <div className="flex items-center gap-2">
                   {exportStatus && (
-                    <span
-                      className="text-xs font-medium px-3 py-1.5 rounded-full"
-                      style={{ color: '#047857', backgroundColor: '#ECFDF5' }}
-                    >
+                    <span className="text-xs font-medium px-3 py-1.5 rounded-full" style={{ color: '#047857', backgroundColor: '#ECFDF5' }}>
                       {exportStatus}
                     </span>
                   )}
@@ -1217,18 +1205,12 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                     className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium text-sm transition-colors"
                   >
                     <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"
-                      />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
                     Download
                   </button>
                 </div>
 
-                {/* Close */}
                 <button
                   onClick={() => setEmailPreviewHTML(null)}
                   style={{
@@ -1299,7 +1281,8 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         style={{
           display: 'flex',
           alignItems: 'center',
-          justifyContent: 'space-between',
+          justifyContent: 'center',
+          gap: 12,
           padding: 16,
           borderTop: `1px solid ${W.border}`,
           background: W.bgWarm,
@@ -1328,8 +1311,8 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
           Regenerate Entire Report
         </Link>
 
-        <Link
-          href="/dashboard/reports"
+        <button
+          onClick={() => window.history.back()}
           style={{
             display: 'inline-flex',
             alignItems: 'center',
@@ -1338,8 +1321,10 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
             fontSize: 13,
             fontWeight: 600,
             color: '#fff',
-            background: W.text,
+            background: W.green,
+            border: 'none',
             borderRadius: 10,
+            cursor: 'pointer',
             textDecoration: 'none',
             transition: 'all 0.2s',
           }}
@@ -1348,7 +1333,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
             <polyline points="20 6 9 17 4 12" />
           </svg>
           Done
-        </Link>
+        </button>
       </div>
     </div>
   )

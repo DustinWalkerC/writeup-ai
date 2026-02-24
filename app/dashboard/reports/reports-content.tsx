@@ -1,8 +1,8 @@
 // app/dashboard/reports/reports-content.tsx
 'use client';
 
-import { useState, useCallback } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useCallback, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import {
   C, PipelineStage, PIPELINE_STAGES, STAGE_STAT_COLORS,
   formatReportPeriod, type PipelineReport,
@@ -39,6 +39,24 @@ interface ReportsContentProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   initialReports: any[];
 }
+
+// -------------------------------------------------------------------
+// Highlight CSS (injected once)
+// -------------------------------------------------------------------
+const HIGHLIGHT_CSS = `
+@keyframes reportHighlightGlow {
+  0% { box-shadow: 0 0 0 0 rgba(0, 183, 219, 0); border-color: #E8E5E0; }
+  12% { box-shadow: 0 0 20px 4px rgba(0, 183, 219, 0.25); border-color: rgba(0, 183, 219, 0.6); }
+  40% { box-shadow: 0 0 0 0 rgba(0, 183, 219, 0); border-color: #E8E5E0; }
+  55% { box-shadow: 0 0 20px 4px rgba(0, 183, 219, 0.2); border-color: rgba(0, 183, 219, 0.45); }
+  100% { box-shadow: 0 0 0 0 rgba(0, 183, 219, 0); border-color: #E8E5E0; }
+}
+.report-highlight-glow {
+  animation: reportHighlightGlow 3s ease-out forwards;
+  border-radius: 14px;
+  overflow: hidden;
+}
+`;
 
 // -------------------------------------------------------------------
 // Stat Card
@@ -83,9 +101,42 @@ function StatCard({
 // -------------------------------------------------------------------
 export default function ReportsContent({ initialReports }: ReportsContentProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [filter, setFilter] = useState('all');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [searchQuery, setSearchQuery] = useState('');
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  const highlightRef = useRef<HTMLDivElement>(null);
+
+  // Read highlight + stage params from URL (set by dashboard click)
+  useEffect(() => {
+    const hid = searchParams.get('highlight');
+    const stage = searchParams.get('stage');
+    if (hid) {
+      // Switch to the correct pipeline tab so the report is visible
+      if (stage && PIPELINE_STAGES.some(s => s.key === stage)) {
+        setFilter(stage);
+        // When filtering to a specific stage, use the appropriate view
+        setViewMode('grid');
+      }
+      setHighlightId(hid);
+      // Clean the URL without triggering navigation
+      window.history.replaceState({}, '', '/dashboard/reports');
+      // Scroll to the element after a brief delay for render + filter change
+      setTimeout(() => {
+        const el = document.getElementById(`report-${hid}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('report-highlight-glow');
+          // Remove glow after animation
+          setTimeout(() => {
+            el.classList.remove('report-highlight-glow');
+            setHighlightId(null);
+          }, 3000);
+        }
+      }, 300);
+    }
+  }, [searchParams]);
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const reports: RawReport[] = initialReports.map((r: any) => ({
@@ -154,6 +205,7 @@ export default function ReportsContent({ initialReports }: ReportsContentProps) 
   if (!hasReports) {
     return (
       <div>
+        <style>{HIGHLIGHT_CSS}</style>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
           <div>
             <h1 style={{ fontFamily: "'Newsreader', serif", fontSize: 28, fontWeight: 500, color: C.text, margin: 0 }}>Reports</h1>
@@ -177,6 +229,8 @@ export default function ReportsContent({ initialReports }: ReportsContentProps) 
 
   return (
     <div>
+      <style>{HIGHLIGHT_CSS}</style>
+
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div>
@@ -225,10 +279,14 @@ export default function ReportsContent({ initialReports }: ReportsContentProps) 
             <VersionStack
               key={i} reports={group} isGrid
               renderCard={(r, stk, ver) => (
-                <PipelineCardGrid report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} />
+                <div id={`report-${r.id}`}>
+                  <PipelineCardGrid report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} />
+                </div>
               )}
               renderListCard={(r, stk, ver) => (
-                <PipelineCardList report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} showHint={false} />
+                <div id={`report-${r.id}`}>
+                  <PipelineCardList report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} showHint={false} />
+                </div>
               )}
             />
           ))}
@@ -239,7 +297,9 @@ export default function ReportsContent({ initialReports }: ReportsContentProps) 
             <VersionStack
               key={i} reports={group} isGrid={false}
               renderCard={(r, stk, ver) => (
-                <PipelineCardList report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} showHint={!isAllView} />
+                <div id={`report-${r.id}`}>
+                  <PipelineCardList report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} showHint={!isAllView} />
+                </div>
               )}
             />
           ))}
@@ -256,4 +316,3 @@ export default function ReportsContent({ initialReports }: ReportsContentProps) 
     </div>
   );
 }
-

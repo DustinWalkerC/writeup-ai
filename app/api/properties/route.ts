@@ -13,7 +13,6 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Fetch properties
     const { data: properties, error: propertiesError } = await supabase
       .from('properties')
       .select('*')
@@ -25,49 +24,57 @@ export async function GET() {
       return NextResponse.json({ success: false, error: propertiesError.message }, { status: 500 })
     }
 
-    // Fetch all reports to get last report for each property
-    const { data: reports, error: reportsError } = await supabase
+    // Fetch latest report per property for "last report" date
+    const { data: reports } = await supabase
       .from('reports')
-      .select('id, property_id, month, year, status, updated_at')
+      .select('id, property_id, month, year, status, generation_status, pipeline_stage, updated_at')
       .eq('user_id', userId)
       .order('updated_at', { ascending: false })
 
-    if (reportsError) {
-      console.error('Reports fetch error:', reportsError)
-    }
-
-    // Map last report to each property
-    const reportsMap = new Map<string, { month: string; year: number; status: string }>()
+    // Build map: property_id → most recent report info
+    const reportsMap = new Map<string, { month: string; year: number; hasGenerated: boolean }>()
     if (reports) {
       for (const report of reports) {
         if (!reportsMap.has(report.property_id)) {
+          const isGenerated = report.generation_status === 'complete' || report.status === 'complete'
           reportsMap.set(report.property_id, {
             month: report.month,
             year: report.year,
-            status: report.status,
+            hasGenerated: isGenerated,
           })
+        } else {
+          // Check if ANY report for this property is generated
+          const existing = reportsMap.get(report.property_id)!
+          if (!existing.hasGenerated) {
+            const isGenerated = report.generation_status === 'complete' || report.status === 'complete'
+            if (isGenerated) existing.hasGenerated = true
+          }
         }
       }
     }
 
-    // Calculate stats
     const totalProperties = properties?.length || 0
-    const totalUnits = properties?.reduce((sum, p) => sum + (p.units || 0), 0) || 0
+    const totalUnits = properties?.reduce((sum: number, p: any) => sum + (p.units || 0), 0) || 0
 
-    // Enhance properties with last report
-    const enhancedProperties = properties?.map(property => ({
-      ...property,
-      lastReport: reportsMap.get(property.id) || null,
-    })) || []
+    const enhancedProperties = properties?.map((property: any) => {
+      const reportInfo = reportsMap.get(property.id)
+      return {
+        id: property.id,
+        name: property.name,
+        address: [property.city, property.state].filter(Boolean).join(', ') || property.address || '',
+        units: property.units || 0,
+        hasBudget: !!property.budget_file_path,
+        hasContext: !!property.investment_strategy,
+        lastReport: reportInfo ? `${reportInfo.month} ${reportInfo.year}` : null,
+        hasGenerated: reportInfo?.hasGenerated || false,
+      }
+    }) || []
 
     return NextResponse.json({
       success: true,
       data: {
         properties: enhancedProperties,
-        stats: {
-          totalProperties,
-          totalUnits,
-        },
+        stats: { totalProperties, totalUnits },
       },
     })
   } catch (error) {

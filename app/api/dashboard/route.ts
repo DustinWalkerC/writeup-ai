@@ -13,73 +13,66 @@ export async function GET() {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    // Get current month/year for filtering
     const now = new Date()
     const currentMonth = now.toLocaleString('default', { month: 'long' })
     const currentYear = now.getFullYear()
 
-    // Fetch all data in parallel
-    const [
-      propertiesResult,
-      reportsResult,
-      recentReportsResult,
-    ] = await Promise.all([
-      // Total properties
+    // Parallel fetches
+    const [propertiesResult, allReportsResult, recentReportsResult] = await Promise.all([
       supabase
         .from('properties')
-        .select('id, name, address, units, created_at')
+        .select('id, name, address, units')
         .eq('user_id', userId)
         .order('created_at', { ascending: false }),
-      
-      // All reports for stats
       supabase
         .from('reports')
-        .select('id, status, month, year, created_at, updated_at, property_id')
+        .select('id, property_id, month, year, status, generation_status, pipeline_stage')
         .eq('user_id', userId),
-      
-      // Recent reports with property info
       supabase
         .from('reports')
-        .select(`
-          id,
-          status,
-          month,
-          year,
-          created_at,
-          updated_at,
-          properties (
-            id,
-            name
-          )
-        `)
+        .select('id, status, month, year, updated_at, pipeline_stage, returned, return_note, properties(name)')
         .eq('user_id', userId)
         .order('updated_at', { ascending: false })
-        .limit(5),
+        .limit(6),
     ])
 
     const properties = propertiesResult.data || []
-    const allReports = reportsResult.data || []
+    const allReports = allReportsResult.data || []
     const recentReports = recentReportsResult.data || []
 
-    // Calculate stats
     const totalProperties = properties.length
-    const totalUnits = properties.reduce((sum, p) => sum + (p.units || 0), 0)
-    
+    const totalUnits = properties.reduce((sum: number, p: any) => sum + (p.units || 0), 0)
+
     const reportsThisMonth = allReports.filter(
-      r => r.month === currentMonth && r.year === currentYear
+      (r: any) => r.month === currentMonth && r.year === currentYear
     ).length
 
-    const completedReports = allReports.filter(r => r.status === 'complete').length
-    const pendingReports = allReports.filter(r => r.status === 'draft' || r.status === 'generating').length
+    // Pipeline-based stats
+    const pipelineCounts = {
+      draft: 0,
+      in_review: 0,
+      final_review: 0,
+      ready_to_send: 0,
+      sent: 0,
+    }
+    for (const r of allReports) {
+      const stage = (r as any).pipeline_stage || 'draft'
+      if (stage in pipelineCounts) {
+        pipelineCounts[stage as keyof typeof pipelineCounts]++
+      }
+    }
 
-    // Properties without reports this month
+    const inPipeline = pipelineCounts.draft + pipelineCounts.in_review + pipelineCounts.final_review + pipelineCounts.ready_to_send
+    const delivered = pipelineCounts.sent
+
+    // Properties needing reports this month
     const propertiesWithReportsThisMonth = new Set(
       allReports
-        .filter(r => r.month === currentMonth && r.year === currentYear)
-        .map(r => r.property_id)
+        .filter((r: any) => r.month === currentMonth && r.year === currentYear)
+        .map((r: any) => r.property_id)
     )
     const propertiesNeedingReports = properties.filter(
-      p => !propertiesWithReportsThisMonth.has(p.id)
+      (p: any) => !propertiesWithReportsThisMonth.has(p.id)
     )
 
     return NextResponse.json({
@@ -89,20 +82,24 @@ export async function GET() {
           totalProperties,
           totalUnits,
           reportsThisMonth,
-          completedReports,
-          pendingReports,
-          propertiesNeedingReports: propertiesNeedingReports.length,
+          inPipeline,
+          delivered,
+          pipelineCounts,
         },
-        properties: properties.slice(0, 5), // Top 5 recent
-        recentReports: recentReports.map(r => ({
+        recentReports: recentReports.map((r: any) => ({
           id: r.id,
           status: r.status,
           month: r.month,
           year: r.year,
           updatedAt: r.updated_at,
-          propertyName: (r.properties as any)?.name || 'Unknown Property',
+          pipelineStage: r.pipeline_stage || 'draft',
+          returned: r.returned || false,
+          propertyName: r.properties?.name || 'Unknown Property',
         })),
-        propertiesNeedingReports: propertiesNeedingReports.slice(0, 3),
+        propertiesNeedingReports: propertiesNeedingReports.slice(0, 5).map((p: any) => ({
+          id: p.id,
+          name: p.name,
+        })),
         currentPeriod: { month: currentMonth, year: currentYear },
       },
     })
@@ -111,4 +108,3 @@ export async function GET() {
     return NextResponse.json({ success: false, error: 'Internal error' }, { status: 500 })
   }
 }
-
