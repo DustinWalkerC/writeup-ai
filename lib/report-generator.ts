@@ -7,6 +7,7 @@ import {
   buildExtractionUserPrompt,
   buildNarrativeSystemPrompt,
   buildNarrativeUserPrompt,
+  type AIPreferences,
 } from './prompt-templates';
 import { getSectionsForTier, ALL_SECTIONS, TIER_SECTIONS, SectionId } from './section-definitions';
 import { generateReport, generateReportStream } from './claude';
@@ -14,6 +15,35 @@ import { resolveBrandColors } from './chart-templates/index';
 import { validateExtractedData, getSkipReason } from './data-validator';
 import type { ExtractedFinancialData } from './extraction-schema';
 import { getModelConfig, getLegacyMaxTokens } from './generation-config';
+
+import { validateReport, applyCorrections, type ValidatorResult } from './math-validator';
+import { buildRegistryFromExtraction, type SourceDataRegistry } from './source-data-registry';
+import { SERVER_DEV_FLAGS } from './dev-config';
+import { SECTION_STATUS_MAP } from './progress-engine';
+
+const MONTH_NAMES = [
+  'January','February','March','April','May','June',
+  'July','August','September','October','November','December',
+];
+
+/**
+ * Writes live generation progress to the reports table.
+ * Non-critical — failures should not break report generation.
+ */
+async function writeGenerationProgress(reportId: string, progress: number, statusText: string) {
+  try {
+    await supabase
+      .from('reports')
+      .update({
+        generation_progress: progress,
+        generation_status_text: statusText,
+      })
+      .eq('id', reportId);
+  } catch (err) {
+    // Non-critical — don't break generation for a progress write failure
+    console.warn('[CORE] Progress write failed:', err);
+  }
+}
 
 /**
  * Get sections for a user — checks user_settings.report_template first,
@@ -94,12 +124,23 @@ export interface GeneratedSection {
   title: string;
   content: string;
   chart_html?: string;
+  chart_data?: {
+    chart_type: string;
+    title: string;
+    data: unknown;
+  } | null;
   metrics: Array<{
     label: string;
     value: string;
     change?: string;
     changeDirection?: 'up' | 'down' | 'flat';
     vsbudget?: string;
+  }>;
+  calculations?: Array<{
+    metric_name: string;
+    inputs: Record<string, number>;
+    formula: string;
+    ai_result: number;
   }>;
   included: boolean;
   skipReason: string | null;
@@ -177,14 +218,21 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
     let match: RegExpExecArray | null;
     while ((match = sectionRegex.exec(jsonContent)) !== null) {
       try {
-        sections.push(JSON.parse(match[0]));
+        const parsed = JSON.parse(match[0]);
+        sections.push({
+          ...parsed,
+          chart_data: parsed.chart_data || null,
+          calculations: Array.isArray(parsed.calculations) ? parsed.calculations : [],
+        });
       } catch {
         sections.push({
           id: match[1],
           title: match[2],
           content: match[3].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\'),
           chart_html: match[4] ? match[4].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\') : '',
+          chart_data: null,
           metrics: tryParseArray(match[5]),
+          calculations: [],
           included: match[6] === 'true',
           skipReason: match[7] === 'null' ? null : match[7].replace(/^"|"$/g, ''),
         });
@@ -399,6 +447,26 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
   // ── 6. Call 2 — Narrative + Chart Assembly (streaming) ──
   const narrativeConfig = getModelConfig(input.tier, 'narrative');
 
+  // Parse AI preferences from user settings
+  const aiPreferences: AIPreferences | null = settings?.ai_preferences
+    ? (settings.ai_preferences as AIPreferences)
+    : null;
+
+  // Build budget summary from extracted data (if budget was found)
+  // Use safe access — extractedData shape comes from extraction-schema.ts
+  const rawExtracted = extractedData as unknown as Record<string, unknown>;
+  const rawNoi = rawExtracted.noi as Record<string, number | null> | undefined;
+  const rawIncome = rawExtracted.income as Record<string, Record<string, number | null>> | undefined;
+  const rawExpenses = rawExtracted.expenses as Record<string, unknown> | undefined;
+  const rawExpTotal = rawExpenses?.total_expenses as Record<string, number | null> | undefined;
+
+  const budgetSummary = rawNoi?.budget != null ? {
+    budget_month: `${MONTH_NAMES[input.selectedMonth - 1]} ${input.selectedYear}`,
+    budget_total_revenue: rawIncome?.total_revenue?.budget ?? undefined,
+    budget_total_expenses: rawExpTotal?.budget ?? undefined,
+    budget_noi: rawNoi.budget ?? undefined,
+  } : null;
+
   const narrativeSystemPrompt = buildNarrativeSystemPrompt({
     tier: input.tier,
     propertyName: property?.name || 'Unknown Property',
@@ -409,6 +477,14 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
     companyName: settings?.company_name || undefined,
     logoUrl: settings?.company_logo_url || undefined,
     sections,
+    // Phase 1 additions
+    aiPreferences,
+    brandColors: {
+      primary: brandColors.primary,
+      secondary: brandColors.secondary,
+      accent: brandColors.accent,
+    },
+    budgetSummary,
   });
 
   // Get freeform narrative from report
@@ -451,13 +527,232 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
     })
     .eq('id', input.reportId);
 
-  return generateReportStream({
+  // ── 7. Stream narrative, then validate + save on completion ──
+  const rawStream = await generateReportStream({
     systemPrompt: narrativeSystemPrompt,
     userPrompt: narrativeUserPrompt,
     maxTokens: narrativeConfig.maxTokens,
     model: narrativeConfig.model,
     temperature: narrativeConfig.temperature,
   });
+
+  // Build Source Data Registry for validation
+  const monthName = MONTH_NAMES[input.selectedMonth - 1];
+  const sourceRegistry: SourceDataRegistry | null = (() => {
+    try {
+      return buildRegistryFromExtraction(
+        extractedData as unknown as Record<string, unknown>,
+        property?.name || 'Unknown Property',
+        `${monthName} ${input.selectedYear}`,
+        property?.units || null
+      );
+    } catch (err) {
+      console.warn('[CORE] Failed to build source registry for validation:', err);
+      return null;
+    }
+  })();
+
+  // Store the registry on the report for future reference
+  if (sourceRegistry) {
+    await supabase
+      .from('reports')
+      .update({ extracted_data: sourceRegistry })
+      .eq('id', input.reportId);
+  }
+
+  // Wrap the stream: pass through all chunks, but also collect the full text
+  // for post-generation validation
+  let fullText = '';
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
+
+  const validatingStream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      const reader = rawStream.getReader();
+      const reportId = input.reportId;
+      const maxTokens = narrativeConfig.maxTokens;
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          // Pass through to client
+          controller.enqueue(value);
+
+          // Collect for validation
+          fullText += decoder.decode(value, { stream: true });
+
+          // After collecting text, estimate progress and write to DB
+          const estimatedProgress = 5 + (fullText.length / (maxTokens * 4)) * 85;
+          const sectionMatch = fullText.match(/"id"\s*:\s*"([a-z_]+)"/g);
+          const lastSection = sectionMatch?.[sectionMatch.length - 1]?.match(/"id"\s*:\s*"([a-z_]+)"/)?.[1];
+          const statusText = lastSection
+            ? SECTION_STATUS_MAP[lastSection] || `Generating: ${lastSection}...`
+            : 'Generating report sections...';
+
+          writeGenerationProgress(reportId, Math.min(estimatedProgress, 90), statusText);
+        }
+
+        // Stream complete — run validation in background (don't block the client)
+        runPostGenerationValidation(reportId, fullText, sourceRegistry, input.tier)
+          .catch(err => console.error('[CORE] Post-generation validation error:', err));
+
+        controller.close();
+      } catch (err) {
+        controller.error(err);
+      }
+    },
+  });
+
+  return validatingStream;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Post-Generation Validation (runs after stream completes)
+// ═══════════════════════════════════════════════════════════
+
+async function runPostGenerationValidation(
+  reportId: string,
+  fullStreamText: string,
+  registry: SourceDataRegistry | null,
+  tier: string
+): Promise<void> {
+  if (SERVER_DEV_FLAGS.skipValidation) {
+    console.log('[CORE] Validation skipped (SKIP_VALIDATION=true)');
+    return;
+  }
+
+  try {
+    // Parse the streamed response to extract sections
+    // We need to reconstruct from the SSE stream format
+    let narrativeText = '';
+    const lines = fullStreamText.split('\n');
+    for (const line of lines) {
+      if (line.startsWith('data: ')) {
+        try {
+          const event = JSON.parse(line.slice(6));
+          if (event.type === 'text') {
+            narrativeText += event.text;
+          }
+        } catch {
+          // Not valid JSON event line — skip
+        }
+      }
+    }
+
+    // If we couldn't parse SSE events, try treating the whole text as the response
+    if (!narrativeText) {
+      narrativeText = fullStreamText;
+    }
+
+    // Parse the narrative JSON
+    const parsed = parseGeneratedJSONForValidation(narrativeText);
+    if (!parsed || parsed.length === 0) {
+      console.warn('[CORE] Could not parse sections for validation');
+      return;
+    }
+
+    // Run three-layer validation
+    const validationResult: ValidatorResult = validateReport(parsed, registry);
+
+    // Apply corrections to sections (updates calculations and metrics in-place)
+    applyCorrections(parsed, validationResult.log.details);
+
+    // Log results
+    if (SERVER_DEV_FLAGS.logValidation) {
+      console.log('[CORE] Validation complete:', {
+        total: validationResult.log.total_calculations,
+        passed: validationResult.log.passed,
+        overridden: validationResult.log.overridden,
+        materialOverrides: validationResult.log.material_overrides,
+        sectionsToRegen: validationResult.sectionsToRegenerate,
+      });
+    }
+
+    // Save validation log and corrected sections to database
+    const updateData: Record<string, unknown> = {
+      validation_log: validationResult.log,
+    };
+
+    // If corrections were applied, update generated_sections with corrected values
+    if (validationResult.log.overridden > 0) {
+      // Fetch current sections from DB (they were saved by the stream handler)
+      const { data: report } = await supabase
+        .from('reports')
+        .select('generated_sections')
+        .eq('id', reportId)
+        .single();
+
+      if (report?.generated_sections) {
+        const currentSections = report.generated_sections as Array<Record<string, unknown>>;
+
+        // Apply corrections to the saved sections
+        for (const [sectionId, corrections] of validationResult.corrections) {
+          const section = currentSections.find(s => s.id === sectionId);
+          if (!section) continue;
+
+          // Update calculations with corrected values
+          const calcs = (section.calculations || []) as Array<{
+            metric_name: string;
+            ai_result: number;
+            inputs: Record<string, number>;
+          }>;
+          for (const correction of corrections) {
+            const calc = calcs.find(c => c.metric_name === correction.metric_name);
+            if (calc) {
+              calc.ai_result = correction.corrected_value;
+            }
+          }
+        }
+
+        updateData.generated_sections = currentSections;
+      }
+    }
+
+    await supabase
+      .from('reports')
+      .update(updateData)
+      .eq('id', reportId);
+
+    // Log material overrides that may need section re-generation
+    if (validationResult.sectionsToRegenerate.length > 0) {
+      console.warn(
+        `[CORE] Material overrides detected in sections: ${validationResult.sectionsToRegenerate.join(', ')}. ` +
+        `Consider re-generating these sections with corrected values.`
+      );
+    }
+
+  } catch (err) {
+    console.error('[CORE] Validation pipeline error:', err);
+    // Validation failure should never block report delivery
+    // Log the error but don't throw
+  }
+}
+
+/**
+ * Simplified parser for validation — extracts sections with calculations.
+ * Doesn't need the full parseGeneratedJSON robustness since we're just
+ * looking for calculations arrays.
+ */
+function parseGeneratedJSONForValidation(
+  text: string
+): Array<{ id: string; calculations?: Array<{ metric_name: string; inputs: Record<string, number>; formula: string; ai_result: number }>; metrics: Array<{ label: string; value: string; change?: string }> }> | null {
+  try {
+    let jsonStr = text.trim();
+    const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]+?)```/);
+    if (fenceMatch) jsonStr = fenceMatch[1].trim();
+    const objStart = jsonStr.indexOf('{');
+    if (objStart >= 0) jsonStr = jsonStr.slice(objStart);
+
+    const parsed = JSON.parse(jsonStr);
+    if (parsed.sections && Array.isArray(parsed.sections)) {
+      return parsed.sections;
+    }
+  } catch {
+    // Can't parse — return null
+  }
+  return null;
 }
 
 // ═══════════════════════════════════════════════════════════

@@ -16,6 +16,15 @@
  * │  Charts missing?        → CHART_ACCESS            │
  * │  Temperature too high?  → MODEL_CONFIG.temperature│
  * └─────────────────────────────────────────────────┘
+ *
+ * ┌─────────────────────────────────────────────────┐
+ * │  PHASE 1 CHANGES (from Master Architecture)      │
+ * │                                                   │
+ * │  • Opus 4.5 for Institutional narrative           │
+ * │  • Temperature 0.3 for all narrative tiers        │
+ * │  • Token limits aligned to architecture doc       │
+ * │  • system_config table support (Phase 4 wiring)   │
+ * └─────────────────────────────────────────────────┘
  */
 
 // ═══════════════════════════════════════════════════════════
@@ -37,6 +46,15 @@ export const MODELS = {
  * Model selection per call type × tier.
  * Env vars (CLAUDE_MODEL_EXTRACTION, CLAUDE_MODEL_NARRATIVE)
  * override these when set. These are the defaults.
+ *
+ * ARCHITECTURE DOC RATIONALE:
+ * - Extraction uses Sonnet, not Haiku. If extraction pulls a wrong
+ *   number, the entire validation pipeline is poisoned. The ~$0.01
+ *   cost difference is not worth the risk.
+ * - Institutional narrative uses Opus 4.5 for deepest reasoning
+ *   and better cross-section intelligence (~3-4 min generation).
+ * - Temperature 0.3 for all narrative tiers. Extraction always 0
+ *   (deterministic number parsing).
  */
 export const MODEL_CONFIG = {
   extraction: {
@@ -45,11 +63,9 @@ export const MODEL_CONFIG = {
     institutional: { model: MODELS.SONNET_4_5, temperature: 0 },
   },
   narrative: {
-    foundational:  { model: MODELS.SONNET_4_5, temperature: 0.15 },
-    professional:  { model: MODELS.SONNET_4_5, temperature: 0.2 },
-    institutional: { model: MODELS.SONNET_4_5, temperature: 0.25 },
-    // To upgrade institutional to Opus:
-    // institutional: { model: MODELS.OPUS_4_5, temperature: 0.25 },
+    foundational:  { model: MODELS.SONNET_4_5, temperature: 0.3 },
+    professional:  { model: MODELS.SONNET_4_5, temperature: 0.3 },
+    institutional: { model: MODELS.OPUS_4_5,   temperature: 0.3 },
   },
 } as const;
 
@@ -65,6 +81,12 @@ export const MODEL_CONFIG = {
  *
  * If reports are truncating → increase narrative maxTokens.
  * If extraction is missing data → increase extraction maxTokens.
+ *
+ * ARCHITECTURE DOC VALUES:
+ *   Extraction: 4,000–6,000 per tier
+ *   Foundational narrative: 6,000 (4 sections, ~35-50 sec)
+ *   Professional narrative: 16,000 (10 sections, ~90-120 sec)
+ *   Institutional narrative: 24,000 (15 sections, ~3-4 min)
  */
 export const TOKEN_LIMITS = {
   core: {
@@ -74,9 +96,9 @@ export const TOKEN_LIMITS = {
       institutional: 6000,
     },
     narrative: {
-      foundational:  8000,
-      professional:  20000,
-      institutional: 30000,
+      foundational:  6000,
+      professional:  16000,
+      institutional: 24000,
     },
   },
   legacy: {
@@ -98,6 +120,11 @@ export const TOKEN_LIMITS = {
  *
  * These values are injected into the narrative prompt so Claude
  * knows exactly how long each section should be.
+ *
+ * ARCHITECTURE DOC RANGES:
+ *   Foundational: 2-4 paragraphs per section
+ *   Professional: 3-6 paragraphs per section
+ *   Institutional: 4-8 paragraphs per section
  *
  * Making sections too short? → increase sentenceRange max.
  * Sections rambling? → decrease sentenceRange max and maxParagraphs.
@@ -232,7 +259,7 @@ export const TIER_CONFIG = {
   },
   professional: {
     maxSections: 10,
-    monthlyPrice: 250,
+    monthlyPrice: 299,
     label: 'Professional',
   },
   institutional: {
@@ -251,6 +278,11 @@ type Tier = 'foundational' | 'professional' | 'institutional';
 /**
  * Get the complete model config for a specific call type + tier.
  * Env vars override the defaults from MODEL_CONFIG.
+ *
+ * Priority chain:
+ *   .env.local CLAUDE_MODEL_EXTRACTION / CLAUDE_MODEL_NARRATIVE  ← highest
+ *   .env.local CLAUDE_MODEL                                      ← fallback
+ *   generation-config.ts MODEL_CONFIG                            ← default
  */
 export function getModelConfig(tier: string, callType: 'extraction' | 'narrative') {
   const t = (tier as Tier) || 'foundational';
@@ -307,7 +339,7 @@ export function getAvailableCharts(tier: string): readonly string[] {
  */
 export function getChartsForSection(sectionId: string, tier: string): string[] {
   const available = getAvailableCharts(tier);
-  const recommended = SECTION_CHART_MAP[sectionId] || ['kpi_strip'];
+  const recommended = SECTION_CHART_MAP[sectionId] || [];
   return recommended.filter(chart => available.includes(chart));
 }
 
@@ -350,12 +382,13 @@ ${rules}
 export function buildChartAccessBlock(sectionIds: string[], tier: string): string {
   const lines = sectionIds.map(id => {
     const charts = getChartsForSection(id, tier);
+    if (charts.length === 0) return `  <section id="${id}">none (KPI metrics only)</section>`;
     return `  <section id="${id}">${charts.join(', ')}</section>`;
   }).join('\n');
 
   return `<chart_access>
 For each section, use ONLY the chart templates listed below.
-If a section shows "kpi_strip" only, do NOT generate any other chart type.
+If a section shows "none", do NOT generate chart_html — only populate the "metrics" array.
 ${lines}
 </chart_access>`;
 }

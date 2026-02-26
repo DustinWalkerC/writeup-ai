@@ -1,14 +1,41 @@
 // lib/prompt-templates.ts
 
 /**
- * CORE — Prompt Templates
+ * PHASE 1 — Master System Prompt Architecture
  *
- * Two prompt sets:
- *   1. Extraction — structured data extraction from documents (Call 1)
- *   2. Narrative  — report writing with chart template filling (Call 2)
+ * Implements the five-layer architecture from the Master Architecture Document.
+ * Layer 1 (Prompt) is defined entirely in this file.
  *
- * Backward-compatible: buildSystemPrompt and buildAnalysisPrompt are
- * still exported for the legacy single-call pipeline.
+ * ┌──────────────────────────────────────────────────────────────┐
+ * │  SYSTEM PROMPT STRUCTURE                                     │
+ * │                                                              │
+ * │  CACHED BLOCKS (1–8)  ~2,500 tokens — identical every call   │
+ * │    1. <role>                                                 │
+ * │    2. <audience>                                             │
+ * │    3. <writing_standards>                                    │
+ * │    4. <financial_terminology>                                │
+ * │    5. <analytical_framework>                                 │
+ * │    6. <data_integrity_rules>                                 │
+ * │    7. <math_validation_rules>         ← NEW Phase 1          │
+ * │    8. <output_schema>                 ← UPDATED Phase 1      │
+ * │                                                              │
+ * │  PER-REQUEST BLOCKS (9–15) — change per report               │
+ * │    9.  <user_preferences>             ← NEW Phase 1          │
+ * │   10.  <property_context>                                    │
+ * │   11.  <brand_colors>                                        │
+ * │   12.  <historical_data>                                     │
+ * │   13.  <budget_context>               ← NEW Phase 1          │
+ * │   14.  <sections_to_generate>                                │
+ * │   15.  <tier_config>                                         │
+ * │                                                              │
+ * │  + Section guidance definitions (cached)                     │
+ * │  + Visualization templates (cached)                          │
+ * │  + Section length rules (per-request)                        │
+ * │  + Chart access rules (per-request)                          │
+ * └──────────────────────────────────────────────────────────────┘
+ *
+ * Backward-compatible: buildSystemPrompt and buildAnalysisPrompt
+ * are still exported for the legacy single-call pipeline.
  */
 
 import { SectionDefinition } from './section-definitions';
@@ -21,7 +48,400 @@ const MONTH_NAMES = [
 ];
 
 // ═══════════════════════════════════════════════════════════
+// AI PREFERENCES TYPE
+// ═══════════════════════════════════════════════════════════
+
+export interface AIPreferences {
+  writing_tone?: 'formal' | 'professional' | 'direct';
+  analysis_depth?: 'summary' | 'standard' | 'comprehensive';
+  terminology?: 'standard_cre' | 'institutional_pe';
+  variance_threshold?: number;
+  negative_format?: 'parenthetical' | 'dash';
+  include_forward_outlook?: boolean;
+  risk_severity_labels?: 'monitor_action' | 'low_med_high';
+  cross_section_insights?: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CACHED BLOCKS 1–8
+// Identical across all requests. ~2,500 tokens.
+// Cache reads cost 90% less than fresh input.
+// ═══════════════════════════════════════════════════════════
+
+function buildCachedSystemBlocks(): string {
+
+  // ── Block 1: <role> ──
+  const block1 = `<role>
+You are a senior multifamily real estate analyst at an institutional
+private equity firm. You produce investor reports for LPs, institutional
+investors, and sophisticated capital partners. Your analysis is
+number-forward, direct, and actionable. You write like a VP of Asset
+Management at JLL or CBRE — not a marketing department.
+</role>`;
+
+  // ── Block 2: <audience> ──
+  const block2 = `<audience>
+Limited partners, institutional investors, family offices, and
+sophisticated capital partners. These readers manage large portfolios.
+They want clear data, honest assessment, and forward-looking insight.
+They do not want filler, marketing language, or vague optimism.
+</audience>`;
+
+  // ── Block 3: <writing_standards> ──
+  const block3 = `<writing_standards>
+- Analytical, direct, concise. Every sentence adds information.
+- Number-forward: lead with metrics, then context.
+- No marketing tone. No emojis. No exclamation marks.
+- No filler phrases: "It is worth noting", "Interestingly",
+  "It should be noted", "Moving forward", "Going forward".
+- Vary sentence structure. Mix short declarative statements with
+  longer analytical sentences. Avoid starting consecutive sentences
+  with the same word.
+- Use active voice. "Revenue increased 4.2%" not "An increase of
+  4.2% was observed in revenue."
+- Paragraphs should flow logically: metric → context → driver →
+  implication.
+- Bold the single most important metric in each section using <strong> tags.
+- Every sentence in the executive summary must contain a specific number.
+- FORBIDDEN WORDS — never use these:
+  "significant/significantly" — use specific quantifiers
+  "notable/noteworthy" — just state the fact
+  "it is worth noting" — delete, state directly
+  "robust/solid" — use specific descriptors
+  "going forward" — use "in the coming months" or omit
+  "leverage" (as verb) — use "use"
+  "utilize" — use "use"
+</writing_standards>`;
+
+  // ── Block 4: <financial_terminology> ──
+  const block4 = `<financial_terminology>
+Use these terms correctly and consistently:
+- GPR: Gross Potential Rent — maximum rent if 100% occupied at market rates
+- EGI: Effective Gross Income — collected revenue after vacancy, concessions, bad debt
+- NRI: Net Rental Income — rental income minus vacancy and concessions
+- NOI: Net Operating Income — Total Revenue minus Total Operating Expenses
+- LTL: Loss to Lease — difference between market rent and in-place rent
+- Basis points (bps): 1bp = 0.01%. Use for precise changes under 1%.
+- MoM: Month-over-month comparison
+- YoY: Year-over-year comparison
+- Per-unit metrics: Always calculate as total ÷ unit count when referencing per-unit values
+The audience understands RE jargon. Do not define these terms.
+</financial_terminology>`;
+
+  // ── Block 5: <analytical_framework> ──
+  const block5 = `<analytical_framework>
+EXECUTIVE SUMMARY:
+- 2–3 sentences (Foundational), 3–4 sentences (Professional/Institutional)
+- Sentence 1: Headline NOI figure with MoM change
+- Sentence 2: Key driver (what caused the change)
+- Sentence 3+: Forward-looking risk or opportunity
+
+SECTION NARRATIVE:
+- Lead every section with the headline number, not a setup sentence.
+  GOOD: "Hill at Woodway generated $113,848 in NOI, a 25.8% improvement over October..."
+  BAD: "In November 2025, the property continued to demonstrate strong performance..."
+- Contextualize every metric: compare to prior month, budget, or trailing average.
+- For variance analysis: state actual, state benchmark, state delta (both $ and %).
+
+ASSET MANAGER OUTLOOK:
+- Use the asset manager's questionnaire answers and freeform notes.
+- Write in third person: "The asset management team reports..."
+- If no notes provided, write 2 sentences based on the financial data.
+</analytical_framework>`;
+
+  // ── Block 6: <data_integrity_rules> ──
+  const block6 = `<data_integrity_rules>
+- NOI CEILING: Your analysis STOPS at Net Operating Income.
+  NOI = Total Revenue - Total Operating Expenses.
+  Never reference debt service, capital expenditures, or cash flow
+  below the NOI line unless the user explicitly provides this data
+  in the questionnaire.
+- DATA FIDELITY: Only reference numbers that exist in the provided
+  data. Never fabricate, estimate, or round numbers that were given
+  precisely.
+- MONTH ALIGNMENT: Only analyze the report month specified. Do not
+  reference months outside the provided data range.
+- NUMBER FORMATTING: Use $X,XXX for dollars. Use X.X% for
+  percentages. Use (parentheses) or dash for negatives based on
+  user preference.
+- VACANCY vs OCCUPANCY: Always verify which metric the source data
+  reports. Convert correctly. 91.4% occupancy = 8.6% vacancy.
+</data_integrity_rules>`;
+
+  // ── Block 7: <math_validation_rules> ── NEW Phase 1
+  const block7 = `<math_validation_rules>
+Every derived metric in your report MUST include a calculations entry.
+For each calculation, provide:
+{
+  "metric_name": "Net Operating Income",
+  "inputs": {
+    "total_revenue": 277826,
+    "total_operating_expenses": 163978
+  },
+  "formula": "total_revenue - total_operating_expenses",
+  "ai_result": 113848
+}
+
+Rules:
+- Input values must exactly match the source data provided.
+- Formula must be a valid arithmetic expression using the input keys.
+- ai_result must be the result of evaluating the formula.
+- Include calculations for: NOI, EGI, margins, ratios, MoM changes,
+  budget variances (both $ and %), per-unit metrics, and any other
+  derived values referenced in the narrative.
+- Do NOT include calculations for raw source values (these are
+  verified at extraction, not generation).
+</math_validation_rules>`;
+
+  // ── Block 8: <output_schema> ── UPDATED Phase 1
+  const block8 = `<output_schema>
+Return a single JSON object with this structure:
+{
+  "report_header": {
+    "property_name": "string",
+    "report_month": "string",
+    "prepared_for": "string",
+    "prepared_by": "string"
+  },
+  "analysis_summary": "One paragraph executive synopsis",
+  "sections": [
+    {
+      "id": "section_id",
+      "title": "Section Title",
+      "content": "Narrative text (plain text with <strong> for emphasis and <br/> for line breaks). No HTML charts, no styled divs.",
+      "chart_html": "Full HTML chart from templates. Empty string if no chart. This field is rendered read-only below the narrative.",
+      "chart_data": {
+        "chart_type": "waterfall | horizontal_bars | trend_line | gauge | risk_cards | heatmap | stacked_bars",
+        "title": "Chart Title",
+        "data": [ ]
+      },
+      "metrics": [
+        {
+          "label": "Net Operating Income",
+          "value": "$113,848",
+          "change": "+4.2%",
+          "changeDirection": "up",
+          "vsbudget": "+2.1%"
+        }
+      ],
+      "calculations": [
+        {
+          "metric_name": "string",
+          "inputs": { "key": "number" },
+          "formula": "string",
+          "ai_result": "number"
+        }
+      ],
+      "included": true,
+      "skipReason": null
+    }
+  ]
+}
+
+CRITICAL FIELD SEPARATION:
+- "content" = NARRATIVE TEXT ONLY. No <div>, <table>, <svg>, or styled HTML.
+  Allowed tags: <strong>, <em>, <br/>, <p>. Nothing else.
+- "chart_html" = ALL visual HTML (charts, tables, visualizations from templates).
+  If no chart template assigned, set to "" (empty string).
+  Chart HTML renders in a read-only panel below the narrative.
+- "chart_data" = Structured JSON describing the chart. Used for backend validation
+  and future deterministic rendering. Set to null if no chart for this section.
+- "metrics" = KPI data for the compact metric strip rendered by the viewer.
+  Do NOT generate kpi_strip HTML — the viewer handles metric cards automatically.
+- "calculations" = Every derived metric must have an entry here for math validation.
+  Raw source values do not need entries — only computed values.
+
+CRITICAL SECTION ORDER:
+- The "sections" array MUST preserve the EXACT order from <sections_to_generate>.
+- Do NOT rearrange, reorder, or sort sections by any other criteria.
+
+CRITICAL: Return ONLY valid JSON. No markdown fences. No preamble.
+The response will be parsed by JSON.parse() directly.
+</output_schema>`;
+
+  return [block1, block2, block3, block4, block5, block6, block7, block8].join('\n\n');
+}
+
+// ═══════════════════════════════════════════════════════════
+// PER-REQUEST BLOCK BUILDERS (9–15)
+// Each returns an XML string or null (omit if no data).
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Block 9: <user_preferences>
+ * Built from user_settings.ai_preferences JSONB.
+ * Controls writing style per the user's saved preferences.
+ * Returns null if no preferences set (uses defaults from writing_standards).
+ */
+function buildUserPreferencesBlock(prefs?: AIPreferences | null): string | null {
+  if (!prefs) return null;
+
+  const lines: string[] = [];
+  if (prefs.writing_tone) lines.push(`writing_tone: ${prefs.writing_tone}`);
+  if (prefs.analysis_depth) lines.push(`analysis_depth: ${prefs.analysis_depth}`);
+  if (prefs.terminology) lines.push(`terminology: ${prefs.terminology}`);
+  if (prefs.variance_threshold !== undefined) lines.push(`variance_threshold: ${prefs.variance_threshold}`);
+  if (prefs.negative_format) lines.push(`negative_format: ${prefs.negative_format}`);
+  if (prefs.include_forward_outlook !== undefined) lines.push(`include_forward_outlook: ${prefs.include_forward_outlook}`);
+  if (prefs.risk_severity_labels) lines.push(`risk_severity_labels: ${prefs.risk_severity_labels}`);
+  if (prefs.cross_section_insights !== undefined) lines.push(`cross_section_insights: ${prefs.cross_section_insights}`);
+
+  if (lines.length === 0) return null;
+
+  return `<user_preferences>
+${lines.join('\n')}
+</user_preferences>`;
+}
+
+/**
+ * Block 10: <property_context>
+ * Property details for this specific report.
+ */
+function buildPropertyContextBlock(params: {
+  propertyName: string;
+  propertyAddress?: string;
+  unitCount?: number;
+  investmentStrategy?: string;
+}): string {
+  return `<property_context>
+property_name: ${params.propertyName}
+${params.propertyAddress ? `address: ${params.propertyAddress}` : ''}
+${params.unitCount ? `units: ${params.unitCount}` : ''}
+${params.investmentStrategy ? `investment_strategy: "${params.investmentStrategy}"` : ''}
+</property_context>`;
+}
+
+/**
+ * Block 11: <brand_colors>
+ * Per-report brand colors for chart template token replacement.
+ */
+function buildBrandColorsBlock(colors?: {
+  primary: string;
+  secondary: string;
+  accent: string;
+}): string {
+  const c = colors || { primary: '#27272A', secondary: '#EFF6FF', accent: '#2563EB' };
+  return `<brand_colors>
+PRIMARY=${c.primary}
+SECONDARY=${c.secondary}
+ACCENT=${c.accent}
+GREEN=#059669
+RED=#DC2626
+AMBER=#D97706
+</brand_colors>`;
+}
+
+/**
+ * Block 12: <historical_data>
+ * Prior month KPI metrics from previous completed report.
+ * Returns null if no prior report exists.
+ */
+function buildHistoricalDataBlock(historicalContext?: string | null): string | null {
+  if (!historicalContext) return null;
+  return `<historical_data>
+${historicalContext}
+</historical_data>`;
+}
+
+/**
+ * Block 13: <budget_context>
+ * Budget summary matched to report month.
+ * Returns null if no budget data is available.
+ */
+function buildBudgetContextBlock(budget?: {
+  budget_month?: string;
+  budget_total_revenue?: number;
+  budget_total_expenses?: number;
+  budget_noi?: number;
+} | null): string | null {
+  if (!budget || (!budget.budget_total_revenue && !budget.budget_total_expenses)) return null;
+  const lines: string[] = [];
+  if (budget.budget_month) lines.push(`budget_month: ${budget.budget_month}`);
+  if (budget.budget_total_revenue) lines.push(`budget_total_revenue: ${budget.budget_total_revenue}`);
+  if (budget.budget_total_expenses) lines.push(`budget_total_expenses: ${budget.budget_total_expenses}`);
+  if (budget.budget_noi) lines.push(`budget_noi: ${budget.budget_noi}`);
+  return `<budget_context>
+${lines.join('\n')}
+</budget_context>`;
+}
+
+/**
+ * Block 14: <sections_to_generate>
+ * Intersection of tier pool + user toggles from designer tab.
+ * Includes paragraph count per section.
+ */
+function buildSectionsToGenerateBlock(
+  sections: SectionDefinition[],
+  sectionsToSkip: string[],
+  paragraphCounts?: Record<string, number>
+): { active: SectionDefinition[]; skipped: SectionDefinition[]; block: string } {
+  const active = sections.filter(s => !sectionsToSkip.includes(s.id));
+  const skipped = sections.filter(s => sectionsToSkip.includes(s.id));
+
+  let block = `<sections_to_generate>
+IMPORTANT: Generate sections in EXACTLY this order. The order numbers below are the user's configured report layout.
+Do NOT rearrange sections. Section order="1" must be first in the response array, order="2" second, etc.\n\n`;
+
+  for (let i = 0; i < active.length; i++) {
+    const section = active[i];
+    const paragraphs = paragraphCounts?.[section.id] || undefined;
+    block += `<section order="${i + 1}" id="${section.id}" title="${section.title}"${paragraphs ? ` paragraphs="${paragraphs}"` : ''}>
+Refer to section_guidance id="${section.id}" in the system prompt for analysis instructions.
+</section>\n\n`;
+  }
+  block += `</sections_to_generate>`;
+
+  return { active, skipped, block };
+}
+
+/**
+ * Block 15: <tier_config>
+ * Appended last. Controls depth, section count, and chart access.
+ */
+function buildTierConfigBlock(tier: string): string {
+  if (tier === 'foundational') {
+    return `<tier_config>
+<tier>foundational</tier>
+<instructions>
+Concise 4-section report. KPI metric cards only — no charts.
+Keep narrative brief: 2–4 paragraphs per section. Focus on headline numbers.
+Do not generate chart_html. Leave chart_html as empty string "".
+Do not generate chart_data. Set chart_data to null.
+</instructions>
+</tier_config>`;
+  }
+
+  if (tier === 'professional') {
+    return `<tier_config>
+<tier>professional</tier>
+<instructions>
+Polished 10-section report with inline HTML charts using the templates provided.
+Balance narrative with visual data presentation. 3–6 paragraphs per section.
+Charts go in the "chart_html" field, NOT in "content".
+After describing the data trend in "content", the chart visual appears separately below.
+Also populate "chart_data" with structured JSON matching the chart_type schemas.
+Every derived metric must have a "calculations" entry for math validation.
+</instructions>
+</tier_config>`;
+  }
+
+  // institutional
+  return `<tier_config>
+<tier>institutional</tier>
+<instructions>
+Comprehensive institutional-grade report with up to 15 sections and premium visualizations.
+Think CBRE/JLL investor memo quality. Dense with data, every word earns its place.
+4–8 paragraphs per section. Multiple chart types per section where appropriate.
+Charts go in the "chart_html" field. Also populate "chart_data" with structured JSON.
+Every derived metric must have a "calculations" entry for math validation.
+Cross-reference data between sections for coherent narrative arc.
+</instructions>
+</tier_config>`;
+}
+
+// ═══════════════════════════════════════════════════════════
 // CALL 1 — DATA EXTRACTION PROMPTS
+// (Unchanged from current — extraction architecture is solid)
 // ═══════════════════════════════════════════════════════════
 
 export function buildExtractionSystemPrompt(params: {
@@ -184,160 +604,78 @@ export function buildNarrativeSystemPrompt(params: {
   companyName?: string;
   logoUrl?: string;
   sections: SectionDefinition[];
+  // ── Phase 1 additions (all optional for backward compat) ──
+  aiPreferences?: AIPreferences | null;
+  brandColors?: { primary: string; secondary: string; accent: string };
+  budgetSummary?: {
+    budget_month?: string;
+    budget_total_revenue?: number;
+    budget_total_expenses?: number;
+    budget_noi?: number;
+  } | null;
+  sectionParagraphCounts?: Record<string, number>;
 }): string {
 
-  // Build the visualization templates block (cached — same for all users)
-  const vizTemplates = buildVisualizationTemplatesBlock();
+  // ── Cached blocks 1–8 (identical every call) ──
+  const cachedBlocks = buildCachedSystemBlocks();
 
-  // Section prompt guidance — included in system prompt for caching
+  // ── Per-request blocks 9–15 ──
+  const perRequestBlocks: string[] = [];
+
+  // Block 9: User preferences
+  const prefsBlock = buildUserPreferencesBlock(params.aiPreferences);
+  if (prefsBlock) perRequestBlocks.push(prefsBlock);
+
+  // Block 10: Property context
+  perRequestBlocks.push(buildPropertyContextBlock({
+    propertyName: params.propertyName,
+    propertyAddress: params.propertyAddress,
+    unitCount: params.unitCount,
+    investmentStrategy: params.investmentStrategy,
+  }));
+
+  // Block 11: Brand colors
+  perRequestBlocks.push(buildBrandColorsBlock(params.brandColors));
+
+  // Block 12: Historical data
+  const histBlock = buildHistoricalDataBlock(params.historicalContext);
+  if (histBlock) perRequestBlocks.push(histBlock);
+
+  // Block 13: Budget context
+  const budgetBlock = buildBudgetContextBlock(params.budgetSummary);
+  if (budgetBlock) perRequestBlocks.push(budgetBlock);
+
+  // Block 15: Tier config (before sections for context)
+  perRequestBlocks.push(buildTierConfigBlock(params.tier));
+
+  // ── Section guidance definitions (cached — same for all users) ──
   const sectionGuidance = params.sections.map(s =>
     `<section_guidance id="${s.id}" title="${s.title}" conditional="${s.isConditional}" visualizations="${s.visualizations}">
 ${s.promptGuidance}
 </section_guidance>`
   ).join('\n\n');
 
-  return `<role>
-You are an expert multifamily real estate analyst at a private equity firm writing institutional-quality investor reports. Your reports are read by Limited Partners (LPs) — sophisticated investors who read dozens of property reports and value precision over prose.
-</role>
+  // ── Visualization templates (cached) ──
+  const vizTemplates = buildVisualizationTemplatesBlock();
 
-<property_context>
-<name>${params.propertyName}</name>
-${params.propertyAddress ? `<address>${params.propertyAddress}</address>` : ''}
-${params.unitCount ? `<units>${params.unitCount}</units>` : ''}
-${params.investmentStrategy ? `<investment_strategy>${params.investmentStrategy}</investment_strategy>` : ''}
-</property_context>
+  // ── Section length + chart access rules (per-request, tier-specific) ──
+  const sectionIds = params.sections.map(s => s.id);
+  const lengthRules = buildSectionLengthRulesBlock(sectionIds, params.tier);
+  const chartAccess = buildChartAccessBlock(sectionIds, params.tier);
 
-<tier_config>
-<tier>${params.tier}</tier>
-${params.tier === 'foundational' ? `<instructions>
-Concise 4-section report. Use KPI metric cards (kpi_strip template) only — no other charts.
-Keep narrative brief: 2-3 sentences per section. Focus on headline numbers.
-</instructions>` : ''}
-${params.tier === 'professional' ? `<instructions>
-Polished 10-section report with inline HTML charts using the templates provided.
-Balance narrative with visual data presentation. 3-5 sentences per section.
-Charts go in the "chart_html" field, NOT in "content". After describing the data trend in "content",
-the chart visual appears separately below. Write 1-2 sentences of insight, not a re-description of chart data.
-</instructions>` : ''}
-${params.tier === 'institutional' ? `<instructions>
-Comprehensive institutional-grade report with up to 15 sections and premium visualizations.
-Think CBRE/JLL investor memo quality. Dense with data, every word earns its place.
-4-7 sentences per section. Multiple chart types per section where appropriate.
-</instructions>` : ''}
-</tier_config>
-
-${params.historicalContext ? `<historical_data>
-${params.historicalContext}
-</historical_data>` : ''}
-
-<noi_ceiling>
-Your analysis STOPS at Net Operating Income (NOI = Total Revenue - Total Expenses).
-This rule exists because the report's audience includes investors with different debt structures,
-waterfall positions, and return profiles. Including below-NOI-line items could create confusion
-or compliance issues. NEVER reference, calculate, or mention: debt service, mortgage payments,
-capital expenditures, distributions, investor returns, IRR, equity multiples, or cash-on-cash return.
-EXCEPTION: If the asset manager explicitly provided capex, debt, or distribution information
-in their notes, you may include ONLY what they mentioned.
-</noi_ceiling>
-
-<narrative_style>
-VOICE: Monthly investor reports for multifamily RE private equity LPs.
-The audience understands RE jargon (NOI, GPR, LTL, basis points). Do not define terms.
-
-STRUCTURE:
-- Lead every section with the headline number, not a setup sentence.
-  GOOD: "Hill at Woodway generated $113,848 in NOI, a 25.8% improvement over October..."
-  BAD: "In November 2025, the property continued to demonstrate strong performance..."
-- Bold the single most important metric in each section using <strong> tags.
-- Every percentage: one decimal place (91.4%, not 91% or 91.42%).
-- Dollar values in narrative: no cents, with commas ($113,848 not $113,848.00).
-- Negative values in narrative: en-dash format (–$4,667), not minus sign.
-- Negative values in tables: parenthetical format ($4,667).
-- Always contextualize: compare to prior month, budget, or trailing average.
-
-FORBIDDEN WORDS — never use these:
-"significant" / "significantly" — use specific quantifiers
-"notable" / "noteworthy" — just state the fact
-"it is worth noting" — delete, state directly
-"robust" / "solid" — use specific descriptors
-"going forward" — use "in the coming months" or omit
-"leverage" (as verb) — use "use"
-"utilize" — use "use"
-
-EXECUTIVE SUMMARY:
-- 2-3 sentences (Foundational), 3-4 sentences (Professional/Institutional)
-- Sentence 1: Headline NOI figure with MoM change
-- Sentence 2: Key driver (what caused the change)
-- Sentence 3+: Forward-looking risk or opportunity
-
-ASSET MANAGER OUTLOOK:
-- Use the asset manager's questionnaire answers and freeform notes
-- Write in third person: "The asset management team reports..."
-- If no notes provided, write 2 sentences based on the financial data
-</narrative_style>
-
-${params.companyName || params.logoUrl ? `<report_header>
-Include a report header at the top of the FIRST section's content (executive_summary).
+  // ── Report header instruction ──
+  let reportHeaderBlock = '';
+  if (params.companyName || params.logoUrl) {
+    reportHeaderBlock = `<report_header>
+Include a report header in the FIRST section's chart_html (executive_summary).
 ${params.logoUrl ? `Logo URL: ${params.logoUrl}` : 'No logo provided — omit the img tag.'}
 Company name: ${params.companyName || 'Omit company name header'}
 Use the report_header template structure from the visualization templates.
-</report_header>` : ''}
-
-${vizTemplates}
-
-<section_definitions>
-${sectionGuidance}
-</section_definitions>
-
-<output_format>
-Respond with ONLY a JSON object. No markdown fences, no preamble, no text before or after.
-Your response must start with { and end with }.
-
-{
-  "sections": [
-    {
-      "id": "section_id",
-      "title": "Section Title",
-      "content": "Narrative text ONLY — no HTML charts, no styled divs. Plain text with optional <strong> for emphasis and <br/> for line breaks.",
-      "chart_html": "<div>...full HTML chart from templates...</div>",
-      "metrics": [{"label": "Name", "value": "$X", "change": "+X%", "changeDirection": "up", "vsbudget": "+X%"}],
-      "included": true,
-      "skipReason": null
-    }
-  ],
-  "analysis_summary": {
-    "overall_sentiment": "improving|stable|declining",
-    "key_findings": ["finding 1", "finding 2"],
-    "data_quality_notes": ["any issues"]
+</report_header>`;
   }
-}
 
-CRITICAL FIELD SEPARATION:
-- "content" = NARRATIVE TEXT ONLY. No <div>, <table>, <svg>, or styled HTML.
-  The content field feeds directly into an editable text area. It must be clean prose.
-  Allowed tags: <strong>, <em>, <br/>, <p>. Nothing else.
-- "chart_html" = ALL visual HTML (charts, tables, visualizations from templates).
-  If the section has no chart template assigned, set chart_html to "" (empty string).
-  Chart HTML renders in a read-only panel below the narrative. It is NOT editable.
-- "metrics" = KPI data for the compact metric strip rendered by the viewer component.
-  Do NOT generate kpi_strip HTML — the viewer handles metric card rendering automatically.
-
-CRITICAL SECTION ORDER:
-- The "sections" array MUST preserve the EXACT order from <sections_to_generate>.
-- Sections are numbered (order="1", order="2", etc.). Your response array index must match.
-- Do NOT rearrange, reorder, or sort sections by any other criteria.
-- The user has specifically configured this order in their settings. Changing it breaks their report layout.
-
-The "sections" array MUST contain one object for EVERY section in the <sections_to_generate> block.
-Generate ALL sections in a single response. Do NOT stop after the first section.
-For sections with insufficient data: set "included": false with a "skipReason".
-</output_format>
-
-${buildSectionLengthRulesBlock(params.sections.map(s => s.id), params.tier)}
-
-${buildChartAccessBlock(params.sections.map(s => s.id), params.tier)}
-
-<critical_rules>
+  // ── Critical rules (enforcement layer) ──
+  const criticalRules = `<critical_rules>
 <rule>Use exact numbers from the <extracted_data> in the user prompt. Never round unless source is rounded.</rule>
 <rule>Format: $1,234,567 (commas) | 94.5% (one decimal) | $850/unit | +3.2% or –1.5% (show sign)</rule>
 <rule>If a number seems inconsistent, flag it in the narrative.</rule>
@@ -345,7 +683,27 @@ ${buildChartAccessBlock(params.sections.map(s => s.id), params.tier)}
 <rule>Use RE terminology naturally: NOI, GPR, EGI, NER, loss-to-lease, etc.</rule>
 <rule>Chart HTML must use inline styles only — no external CSS, no JavaScript.</rule>
 <rule>Replace {{PRIMARY}}, {{SECONDARY}}, {{ACCENT}}, {{GREEN}}, {{RED}}, {{AMBER}} with values from <brand_colors>.</rule>
+<rule>Every derived metric referenced in narrative MUST have a matching entry in "calculations".</rule>
 </critical_rules>`;
+
+  // ── Assemble complete system prompt ──
+  return [
+    cachedBlocks,
+    '\n\n',
+    perRequestBlocks.join('\n\n'),
+    '\n\n',
+    `<section_definitions>\n${sectionGuidance}\n</section_definitions>`,
+    '\n\n',
+    vizTemplates,
+    '\n\n',
+    reportHeaderBlock,
+    '\n\n',
+    lengthRules,
+    '\n\n',
+    chartAccess,
+    '\n\n',
+    criticalRules,
+  ].filter(s => s.trim()).join('\n');
 }
 
 export function buildNarrativeUserPrompt(params: {
@@ -358,14 +716,20 @@ export function buildNarrativeUserPrompt(params: {
   distributionStatus: string;
   distributionNote: string;
   freeformNarrative?: string;
-  brandColors: { primary: string; secondary: string; accent: string };
+  brandColors?: { primary: string; secondary: string; accent: string };
+  // ── Phase 1 additions ──
+  sectionParagraphCounts?: Record<string, number>;
 }): string {
   const monthName = MONTH_NAMES[params.selectedMonth - 1];
 
   let prompt = `Generate the investor report for ${monthName} ${params.selectedYear}.\n\n`;
 
-  // ── Brand colors (in user prompt to preserve system prompt cache) ──
-  prompt += `<brand_colors>
+  // ── Brand colors (kept in user prompt for backward compat if provided) ──
+  // NOTE: Phase 1 also puts brand_colors in system prompt Block 11.
+  // If brandColors is passed here, include it. This supports both
+  // old callers (brandColors in user prompt) and new callers (in system prompt).
+  if (params.brandColors) {
+    prompt += `<brand_colors>
 PRIMARY=${params.brandColors.primary}
 SECONDARY=${params.brandColors.secondary}
 ACCENT=${params.brandColors.accent}
@@ -373,6 +737,7 @@ GREEN=#059669
 RED=#DC2626
 AMBER=#D97706
 </brand_colors>\n\n`;
+  }
 
   // ── Extracted data from Call 1 ──
   prompt += `<extracted_data>\n${params.extractedDataJson}\n</extracted_data>\n\n`;
@@ -398,25 +763,20 @@ ${params.distributionNote ? `<note>${params.distributionNote}</note>` : ''}
 </distribution_status>\n\n`;
   }
 
-  // ── Sections to generate — EXPLICITLY NUMBERED for order enforcement ──
-  const activeSections = params.sections.filter(s => !params.sectionsToSkip.includes(s.id));
-  const skippedSections = params.sections.filter(s => params.sectionsToSkip.includes(s.id));
+  // ── Block 14: Sections to generate — EXPLICITLY NUMBERED ──
+  const { active: activeSections, skipped: skippedSections, block: sectionsBlock } =
+    buildSectionsToGenerateBlock(
+      params.sections,
+      params.sectionsToSkip,
+      params.sectionParagraphCounts
+    );
 
-  prompt += `<sections_to_generate>
-IMPORTANT: Generate sections in EXACTLY this order. The order numbers below are the user's configured report layout.
-Do NOT rearrange sections. Section order="1" must be first in the response array, order="2" second, etc.\n\n`;
-  for (let i = 0; i < activeSections.length; i++) {
-    const section = activeSections[i];
-    prompt += `<section order="${i + 1}" id="${section.id}" title="${section.title}" visualizations="${section.visualizations}">
-Refer to section_guidance id="${section.id}" in the system prompt for analysis instructions.
-</section>\n\n`;
-  }
-  prompt += `</sections_to_generate>\n\n`;
+  prompt += sectionsBlock + '\n\n';
 
-  // Pre-skipped sections (include as not-included in response, AFTER active sections)
+  // Pre-skipped sections
   if (skippedSections.length > 0) {
     prompt += `<pre_skipped_sections>
-These sections were skipped due to missing data. Include them AFTER all active sections in your response with "included": false.
+These sections were skipped due to missing data. Include them AFTER all active sections with "included": false.
 ${skippedSections.map(s => `- ${s.id}: "${s.title}"`).join('\n')}
 </pre_skipped_sections>\n\n`;
   }
@@ -427,7 +787,8 @@ ${skippedSections.map(s => `- ${s.id}: "${s.title}"`).join('\n')}
 <instruction>Replace all {{COLOR}} tokens in chart HTML with values from <brand_colors>.</instruction>
 <instruction>Return a SINGLE JSON with ALL ${params.sections.length} sections (${activeSections.length} active + ${skippedSections.length} skipped).</instruction>
 <instruction>STOP AT NOI. No debt service, capex, or distributions unless the asset manager mentioned them.</instruction>
-<instruction>The "sections" array MUST match the EXACT order from <sections_to_generate> (order 1 first, order 2 second, etc.). The user configured this order — do NOT change it.</instruction>
+<instruction>The "sections" array MUST match the EXACT order from <sections_to_generate>.</instruction>
+<instruction>Every derived metric in the narrative MUST have a corresponding entry in that section's "calculations" array.</instruction>
 </final_instructions>`;
 
   return prompt;
@@ -465,7 +826,9 @@ Respond with ONLY a JSON object. No markdown fences, no preamble.
   "title": "${params.sectionTitle}",
   "content": "Narrative text only — no HTML charts.",
   "chart_html": "HTML chart visualizations (empty string if none).",
+  "chart_data": null,
   "metrics": [...],
+  "calculations": [...],
   "included": true,
   "skipReason": null
 }
@@ -474,7 +837,7 @@ Respond with ONLY a JSON object. No markdown fences, no preamble.
 
 // ═══════════════════════════════════════════════════════════
 // BACKWARD COMPAT — Legacy single-call aliases
-// These are used by the legacy pipeline (when USE_CORE_PIPELINE=false)
+// Used by the legacy pipeline (when USE_CORE_PIPELINE=false)
 // ═══════════════════════════════════════════════════════════
 
 export function buildSystemPrompt(params: {
@@ -530,7 +893,7 @@ ${params.historicalContext ? `<historical_data>\n${params.historicalContext}\n</
 
 <visualization_rules>
 ${params.tier === 'foundational' ? `Use KPI metric cards only — no SVG charts.` : ''}
-${params.tier !== 'foundational' ? `Generate inline HTML/SVG charts in the "content" field. Charts must be self-contained with inline CSS. Use brand colors.` : ''}
+${params.tier !== 'foundational' ? `Generate inline HTML/SVG charts in the "chart_html" field. Charts must be self-contained with inline CSS. Use brand colors.` : ''}
 </visualization_rules>
 
 <output_format>

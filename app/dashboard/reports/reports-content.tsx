@@ -11,6 +11,8 @@ import { PipelineIcons, getIcon } from '@/components/pipeline-icons';
 import { PipelineCardGrid, PipelineCardList } from '@/components/report-pipeline-card';
 import ReportFilterBar from '@/components/report-filter-bar';
 import VersionStack from '@/components/version-stack';
+import GeneratingCard from '@/components/generating-card';
+import { createClient } from '@supabase/supabase-js';
 
 export type { PipelineReport } from '@/lib/report-pipeline-tokens';
 
@@ -21,12 +23,17 @@ interface RawReport {
   id: string;
   property_id: string;
   user_id: string;
-  pipeline_stage: PipelineStage;
+  pipeline_stage: string; // Use string here — DB can return 'generating' or any stage
   selected_month: number;
   selected_year: number;
   updated_at: string;
   returned?: boolean;
   return_note?: string;
+
+  // Generation fields (Phase 2B)
+  generation_progress?: number | null;
+  generation_status_text?: string | null;
+
   properties: {
     name: string;
     address?: string;
@@ -34,6 +41,32 @@ interface RawReport {
     state?: string;
   };
 }
+
+/**
+ * Internal report type used within this component.
+ * Extends PipelineReport with generation progress fields
+ * and internal grouping keys.
+ *
+ * pipeline_stage is typed as `string` rather than `PipelineStage`
+ * to accommodate the 'generating' stage that exists at runtime
+ * but may not yet be in the PipelineStage union.
+ */
+type UIReport = {
+  id: string;
+  property_name: string;
+  period: string;
+  pipeline_stage: string;
+  updated_at: string;
+  returned?: boolean;
+  return_note?: string;
+  // Internal grouping keys (not on PipelineReport)
+  _property_id: string;
+  _month: number;
+  _year: number;
+  // Generation progress (Phase 2B)
+  generation_progress: number | null;
+  generation_status_text: string | null;
+};
 
 interface ReportsContentProps {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -97,6 +130,21 @@ function StatCard({
 }
 
 // -------------------------------------------------------------------
+// Helper: cast UIReport to PipelineReport for card components
+// -------------------------------------------------------------------
+function asPipelineReport(r: UIReport): PipelineReport {
+  return {
+    id: r.id,
+    property_name: r.property_name,
+    period: r.period,
+    pipeline_stage: r.pipeline_stage as PipelineStage,
+    updated_at: r.updated_at,
+    returned: r.returned,
+    return_note: r.return_note,
+  };
+}
+
+// -------------------------------------------------------------------
 // Main Content
 // -------------------------------------------------------------------
 export default function ReportsContent({ initialReports }: ReportsContentProps) {
@@ -107,6 +155,40 @@ export default function ReportsContent({ initialReports }: ReportsContentProps) 
   const [searchQuery, setSearchQuery] = useState('');
   const [highlightId, setHighlightId] = useState<string | null>(null);
   const highlightRef = useRef<HTMLDivElement>(null);
+
+  // Local, mutable report state (so realtime updates can patch progress)
+  const [reports, setReports] = useState<UIReport[]>(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const rawReports: RawReport[] = initialReports.map((r: any) => ({
+      id: r.id,
+      property_id: r.property_id,
+      user_id: r.user_id,
+      pipeline_stage: r.pipeline_stage || 'draft',
+      selected_month: r.selected_month || 1,
+      selected_year: r.selected_year || new Date().getFullYear(),
+      updated_at: r.updated_at,
+      returned: r.returned,
+      return_note: r.return_note,
+      generation_progress: r.generation_progress,
+      generation_status_text: r.generation_status_text,
+      properties: r.properties || { name: 'Unknown Property' },
+    }));
+
+    return rawReports.map((r) => ({
+      id: r.id,
+      property_name: r.properties.name,
+      period: formatReportPeriod(r.selected_month, r.selected_year),
+      pipeline_stage: r.pipeline_stage,
+      updated_at: r.updated_at,
+      returned: r.returned,
+      return_note: r.return_note,
+      _property_id: r.property_id,
+      _month: r.selected_month,
+      _year: r.selected_year,
+      generation_progress: r.generation_progress ?? null,
+      generation_status_text: r.generation_status_text ?? null,
+    }));
+  });
 
   // Read highlight + stage params from URL (set by dashboard click)
   useEffect(() => {
@@ -138,32 +220,43 @@ export default function ReportsContent({ initialReports }: ReportsContentProps) 
     }
   }, [searchParams]);
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const reports: RawReport[] = initialReports.map((r: any) => ({
-    id: r.id,
-    property_id: r.property_id,
-    user_id: r.user_id,
-    pipeline_stage: r.pipeline_stage || 'draft',
-    selected_month: r.selected_month || 1,
-    selected_year: r.selected_year || new Date().getFullYear(),
-    updated_at: r.updated_at,
-    returned: r.returned,
-    return_note: r.return_note,
-    properties: r.properties || { name: 'Unknown Property' },
-  }));
+  // Subscribe to report changes (realtime progress for generating reports)
+  useEffect(() => {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+    const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
 
-  const pipelineReports = reports.map(r => ({
-    id: r.id,
-    property_name: r.properties.name,
-    period: formatReportPeriod(r.selected_month, r.selected_year),
-    pipeline_stage: r.pipeline_stage as PipelineStage,
-    updated_at: r.updated_at,
-    returned: r.returned,
-    return_note: r.return_note,
-    _property_id: r.property_id,
-    _month: r.selected_month,
-    _year: r.selected_year,
-  }));
+    const channel = supabase
+      .channel('generating-reports')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'reports',
+        },
+        (payload) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const updated = payload.new as any;
+          // Update local state with new progress / stage changes
+          setReports((prev) => prev.map((r) =>
+            r.id === updated.id
+              ? {
+                ...r,
+                pipeline_stage: updated.pipeline_stage ?? r.pipeline_stage,
+                generation_progress: updated.generation_progress ?? r.generation_progress ?? null,
+                generation_status_text: updated.generation_status_text ?? r.generation_status_text ?? null,
+              }
+              : r
+          ));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
 
   const refreshReports = useCallback(() => {
     router.refresh();
@@ -171,15 +264,15 @@ export default function ReportsContent({ initialReports }: ReportsContentProps) 
 
   const counts: Record<string, number> = {};
   PIPELINE_STAGES.forEach(s => {
-    counts[s.key] = pipelineReports.filter(r => r.pipeline_stage === s.key).length;
+    counts[s.key] = reports.filter(r => r.pipeline_stage === s.key).length;
   });
 
-  const filtered = pipelineReports
+  const filtered = reports
     .filter(r => filter === 'all' || r.pipeline_stage === filter)
     .filter(r => !searchQuery || r.property_name.toLowerCase().includes(searchQuery.toLowerCase()));
 
-  const groupReports = (list: typeof pipelineReports) => {
-    const map = new Map<string, typeof pipelineReports>();
+  const groupReports = (list: UIReport[]) => {
+    const map = new Map<string, UIReport[]>();
     const keys: string[] = [];
     list.forEach(r => {
       const k = `${r._property_id}|||${r._month}|||${r._year}`;
@@ -201,6 +294,30 @@ export default function ReportsContent({ initialReports }: ReportsContentProps) 
     { label: 'Ready to Send', count: counts.ready_to_send || 0, icon: 'check', color: STAGE_STAT_COLORS.ready_to_send, key: 'ready_to_send' },
     { label: 'Archive', count: counts.sent || 0, icon: 'send', color: STAGE_STAT_COLORS.sent, key: 'sent' },
   ];
+
+  // Helper: check if a report is in 'generating' state
+  const isGenerating = (r: UIReport) => r.pipeline_stage === 'generating';
+
+  // Helper: render GeneratingCard for a report
+  const renderGeneratingCard = (report: UIReport) => (
+    <GeneratingCard
+      compact
+      reportId={report.id}
+      propertyName={report.property_name}
+      reportPeriod={report.period}
+      progress={{
+        displayProgress: report.generation_progress || 0,
+        phase: 'generating',
+        statusText: report.generation_status_text || 'Generating...',
+        sectionsCompleted: 0,
+        sectionsTotal: 10,
+        estimatedSecondsRemaining: null,
+        validationPassed: false,
+        errorMessage: null,
+      }}
+      onClick={() => router.push(`/dashboard/reports/${report.id}/generate`)}
+    />
+  );
 
   if (!hasReports) {
     return (
@@ -277,17 +394,31 @@ export default function ReportsContent({ initialReports }: ReportsContentProps) 
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(340px, 1fr))', gap: 16 }}>
           {grouped.map((group, i) => (
             <VersionStack
-              key={i} reports={group} isGrid
-              renderCard={(r, stk, ver) => (
-                <div id={`report-${r.id}`}>
-                  <PipelineCardGrid report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} />
-                </div>
-              )}
-              renderListCard={(r, stk, ver) => (
-                <div id={`report-${r.id}`}>
-                  <PipelineCardList report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} showHint={false} />
-                </div>
-              )}
+              key={i} reports={group.map(asPipelineReport)} isGrid
+              renderCard={(report, stk, ver) => {
+                const uiReport = group.find(r => r.id === report.id)!;
+                return (
+                  <div id={`report-${report.id}`}>
+                    {isGenerating(uiReport) ? (
+                      renderGeneratingCard(uiReport)
+                    ) : (
+                      <PipelineCardGrid report={report} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} />
+                    )}
+                  </div>
+                );
+              }}
+              renderListCard={(report, stk, ver) => {
+                const uiReport = group.find(r => r.id === report.id)!;
+                return (
+                  <div id={`report-${report.id}`}>
+                    {isGenerating(uiReport) ? (
+                      renderGeneratingCard(uiReport)
+                    ) : (
+                      <PipelineCardList report={report} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} showHint={false} />
+                    )}
+                  </div>
+                );
+              }}
             />
           ))}
         </div>
@@ -295,12 +426,19 @@ export default function ReportsContent({ initialReports }: ReportsContentProps) 
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {grouped.map((group, i) => (
             <VersionStack
-              key={i} reports={group} isGrid={false}
-              renderCard={(r, stk, ver) => (
-                <div id={`report-${r.id}`}>
-                  <PipelineCardList report={r} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} showHint={!isAllView} />
-                </div>
-              )}
+              key={i} reports={group.map(asPipelineReport)} isGrid={false}
+              renderCard={(report, stk, ver) => {
+                const uiReport = group.find(r => r.id === report.id)!;
+                return (
+                  <div id={`report-${report.id}`}>
+                    {isGenerating(uiReport) ? (
+                      renderGeneratingCard(uiReport)
+                    ) : (
+                      <PipelineCardList report={report} stackCount={stk} versionLabel={ver} onStageChange={refreshReports} showHint={!isAllView} />
+                    )}
+                  </div>
+                );
+              }}
             />
           ))}
         </div>
