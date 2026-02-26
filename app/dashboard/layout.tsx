@@ -1,6 +1,7 @@
 'use client';
 
-import { UserButton } from '@clerk/nextjs';
+import { UserButton, useAuth } from '@clerk/nextjs';
+import GenerationToast from '@/components/generation-toast';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useState, useEffect } from 'react';
@@ -68,9 +69,6 @@ const Icons = {
   ),
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   NAV ITEM TYPE
-   ═══════════════════════════════════════════════════════════════ */
 type NavItem = {
   href: string;
   label: string;
@@ -84,9 +82,6 @@ const navItems: NavItem[] = [
   { href: '/dashboard/settings',   label: 'Designer',   icon: Icons.sliders },
 ];
 
-/* ═══════════════════════════════════════════════════════════════
-   TIER OVERRIDE (Dev only)
-   ═══════════════════════════════════════════════════════════════ */
 type TierOverride = 'none' | 'foundational' | 'professional' | 'institutional';
 
 const tierColors: Record<TierOverride, { text: string; bg: string }> = {
@@ -96,10 +91,8 @@ const tierColors: Record<TierOverride, { text: string; bg: string }> = {
   institutional:  { text: '#002D5F',  bg: '#002D5F10' },
 };
 
-/* ═══════════════════════════════════════════════════════════════
-   LAYOUT COMPONENT
-   ═══════════════════════════════════════════════════════════════ */
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  const { userId } = useAuth();
   const pathname = usePathname();
   const [tierOverride, setTierOverride] = useState<TierOverride>('none');
   const [showTierMenu, setShowTierMenu] = useState(false);
@@ -116,12 +109,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
   }, [isDev]);
 
-  // Close mobile sidebar on route change
   useEffect(() => {
     setMobileOpen(false);
   }, [pathname]);
 
-  // Prevent body scroll when mobile sidebar is open
   useEffect(() => {
     if (mobileOpen) {
       document.body.style.overflow = 'hidden';
@@ -149,200 +140,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   return (
     <div style={{ minHeight: '100vh', background: C.bgAlt, fontFamily: "var(--font-body, 'DM Sans', sans-serif)" }}>
-
-      {/* ═══ MOBILE TOP BAR ═══ */}
-      <div className="mobile-menu-btn" style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
-        background: 'rgba(255,255,255,0.92)',
-        backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
-        borderBottom: `1px solid ${C.borderL}`,
-        padding: '0 16px', height: 56,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-      }}>
-        <button
-          onClick={() => setMobileOpen(!mobileOpen)}
-          aria-label="Toggle menu"
-          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 8, display: 'flex', alignItems: 'center' }}
-        >
-          {mobileOpen ? Icons.x(C.text) : Icons.menu(C.text)}
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
-          <div style={{
-            width: 28, height: 28, borderRadius: 7,
-            background: C.accent,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: "var(--font-body)", fontWeight: 700, fontSize: 12, color: '#fff',
-          }}>W</div>
-          <span style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 17, fontWeight: 500, color: C.text }}>WriteUp AI</span>
-        </div>
-        {/* Placeholder for spacing — UserButton lives in sidebar */}
-        <div style={{ width: 28 }} />
-      </div>
-
-      {/* ═══ SIDEBAR OVERLAY (mobile) ═══ */}
-      <div
-        className={`sidebar-overlay ${mobileOpen ? 'open' : ''}`}
-        onClick={() => setMobileOpen(false)}
-      />
-
-      {/* ═══ SIDEBAR ═══ */}
-      <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
-        {/* Logo */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 14px', marginBottom: 24 }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: 8,
-            background: C.accent,
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontFamily: "var(--font-body)", fontWeight: 700, fontSize: 14, color: '#fff',
-          }}>W</div>
-          <span style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 19, fontWeight: 500, color: C.text }}>WriteUp AI</span>
-        </div>
-
-        {/* Nav links */}
-        <nav style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-          {navItems.map((item) => {
-            const active = isActive(item.href);
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`sidebar-link ${active ? 'active' : ''}`}
-              >
-                <span style={{ opacity: active ? 1 : 0.5, display: 'flex', alignItems: 'center' }}>
-                  {item.icon(active ? C.accent : C.textSoft)}
-                </span>
-                <span>{item.label}</span>
-                {active && (
-                  <span style={{
-                    marginLeft: 'auto', width: 5, height: 5,
-                    borderRadius: '50%', background: C.accent,
-                  }} />
-                )}
-              </Link>
-            );
-          })}
-        </nav>
-
-        {/* Divider */}
-        <div className="divider" style={{ margin: '20px 14px' }} />
-
-        {/* Dev tier override */}
-        {isDev && (
-          <div style={{ padding: '0 8px', marginBottom: 12 }}>
-            <div style={{ position: 'relative' }}>
-              <button
-                onClick={() => setShowTierMenu(!showTierMenu)}
-                style={{
-                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  gap: 6, fontFamily: "var(--font-body)", fontSize: 11, fontWeight: 600,
-                  color: tierColors[tierOverride].text,
-                  background: tierColors[tierOverride].bg,
-                  border: `1px dashed ${C.border}`,
-                  borderRadius: 8, padding: '7px 12px', cursor: 'pointer',
-                  letterSpacing: '0.04em', textTransform: 'uppercase',
-                }}
-              >
-                {tierOverride === 'none' ? 'Dev: No Override' : `Dev: ${tierOverride}`}
-              </button>
-
-              {showTierMenu && (
-                <>
-                  <div style={{ position: 'fixed', inset: 0, zIndex: 40 }} onClick={() => setShowTierMenu(false)} />
-                  <div style={{
-                    position: 'absolute', left: 0, right: 0, bottom: '100%', marginBottom: 8,
-                    background: C.bg, border: `1px solid ${C.border}`, borderRadius: 12,
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.08)', zIndex: 50, padding: 6,
-                    fontFamily: "var(--font-body)",
-                  }}>
-                    <div style={{
-                      padding: '6px 10px', fontSize: 10, fontWeight: 600,
-                      color: C.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em',
-                    }}>Tier Override</div>
-                    {(['none', 'foundational', 'professional', 'institutional'] as TierOverride[]).map((tier) => (
-                      <button
-                        key={tier}
-                        onClick={() => handleTierChange(tier)}
-                        style={{
-                          width: '100%', textAlign: 'left',
-                          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                          padding: '8px 10px', borderRadius: 8,
-                          background: tierOverride === tier ? C.bgAlt : 'transparent',
-                          border: 'none', cursor: 'pointer',
-                          fontSize: 13, fontWeight: tierOverride === tier ? 600 : 500,
-                          color: tierOverride === tier ? C.text : C.textMid,
-                          fontFamily: "var(--font-body)",
-                          transition: 'all 0.15s',
-                        }}
-                      >
-                        <span>{tier === 'none' ? 'No Override' : tier.charAt(0).toUpperCase() + tier.slice(1)}</span>
-                        {tier !== 'none' && (
-                          <span style={{
-                            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 100,
-                            color: tierColors[tier].text,
-                            background: tierColors[tier].bg,
-                          }}>
-                            {tier === 'foundational' ? '4 sec' : tier === 'professional' ? '10 sec' : '15 sec'}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                    <div style={{
-                      marginTop: 4, padding: '6px 10px', borderTop: `1px solid ${C.borderL}`,
-                      fontSize: 11, color: C.textMuted,
-                    }}>Dev only. Overrides Stripe tier.</div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Spacer */}
-        <div style={{ flex: 1 }} />
-
-        {/* New Report CTA */}
-        <div style={{ padding: '0 8px', marginBottom: 8 }}>
-          <Link
-            href="/dashboard/reports/new"
-            className="btn-primary"
-            style={{
-              width: '100%', justifyContent: 'center',
-              padding: '11px 16px', fontSize: 14,
-              textDecoration: 'none',
-            }}
-          >
-            {Icons.plus('#fff')}
-            <span>New Report</span>
-          </Link>
-        </div>
-
-        {/* User button */}
-        <div style={{
-          padding: '12px 14px', borderTop: `1px solid ${C.borderL}`,
-          display: 'flex', alignItems: 'center', gap: 10,
-        }}>
-          {mounted ? (
-            <UserButton afterSignOutUrl="/" />
-          ) : (
-            <div style={{ width: 28, height: 28, borderRadius: '50%', background: C.bgAlt }} />
-          )}
-          <span style={{ fontSize: 13, color: C.textSoft, fontWeight: 500 }}>Account</span>
-        </div>
-      </aside>
-
-      {/* ═══ MAIN CONTENT ═══ */}
-      <main
-        className="main-content"
-        style={{
-          marginLeft: 240,
-          minHeight: '100vh',
-          padding: '28px 32px',
-        }}
-      >
-        {/* Mobile spacer for fixed top bar */}
-        <div className="mobile-menu-btn" style={{ height: 56, display: 'none' }} />
-        {children}
-      </main>
+      {children}
+      {userId && <GenerationToast userId={userId} />}
     </div>
   );
 }

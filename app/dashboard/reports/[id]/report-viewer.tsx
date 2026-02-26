@@ -11,6 +11,7 @@ import { StructuredContent, Property, UserSettings } from '@/lib/supabase'
 import { ReportTemplate } from '@/components/report-template'
 import { ExportDropdown } from '@/components/export-dropdown'
 import { extractReportTemplateData } from '@/lib/report-data-extractor'
+import VerifiedBadge from '@/components/verified-badge'
 import {
   generatePDF,
   generateStandaloneHTML,
@@ -20,6 +21,7 @@ import {
   generateEmailHTML,
   downloadEmailHTML,
 } from '@/lib/export-utils'
+import { renderChart, ChartData } from '@/lib/chart-renderer'
 
 // ── Month name → number mapping ──
 const MONTH_NUMBERS: Record<string, number> = {
@@ -46,6 +48,7 @@ interface GeneratedSection {
   title: string
   content: string
   chart_html?: string
+  chart_data?: ChartData
   metrics?: Array<{ label: string; value: string; change?: string; changeDirection?: string; vsbudget?: string }>
   included: boolean
   skipReason: string | null
@@ -60,6 +63,7 @@ type Props = {
     narrative: string | null
     content: StructuredContent | Record<string, unknown> | null
     generated_sections?: GeneratedSection[] | null
+    validation_log?: any | null
     questionnaire: Record<string, unknown>
     template_version: string
     updated_at: string
@@ -190,10 +194,17 @@ function renderMetricCards(metrics: GeneratedSection['metrics'], accentColor?: s
   return `<table role="presentation" cellpadding="0" cellspacing="8" border="0" data-metrics="true" style="width:100%;border-collapse:separate;margin:16px 0;table-layout:fixed;page-break-inside:avoid;"><tr>${cells}</tr></table>`
 }
 
-// ── Formatted Section Renderer (unchanged — used in export) ──
+// ── Formatted Section Renderer (updated — used in export) ──
 
 function renderFormattedSections(
-  orderedSections: Array<{ id: string; title: string; content: string; chart_html?: string; metrics?: GeneratedSection['metrics'] }>,
+  orderedSections: Array<{
+    id: string
+    title: string
+    content: string
+    chart_html?: string
+    chart_data?: ChartData
+    metrics?: GeneratedSection['metrics']
+  }>,
   accentColor: string,
   disclaimer?: string | null
 ): string {
@@ -201,17 +212,19 @@ function renderFormattedSections(
   const sectionsHTML = activeSections
     .map((section, idx) => {
       const { narrative, chartHTML } = getDisplayContent(section)
+      const finalChartHTML = section.chart_data ? renderChart(section.chart_data as ChartData) : chartHTML
+
       let html = `<div data-section="${section.id}" style="margin-bottom:36px;">`
-      if (chartHTML && idx === 0)
-        html += `<div data-chart="header" style="margin-bottom:24px;width:100%;overflow:hidden;page-break-inside:avoid;">${chartHTML}</div>`
+      if (finalChartHTML && idx === 0)
+        html += `<div data-chart="header" style="margin-bottom:24px;width:100%;overflow:hidden;page-break-inside:avoid;">${finalChartHTML}</div>`
       html += `<h2 style="font-size:19px;font-weight:700;color:#0f172a;margin-bottom:14px;padding-bottom:8px;border-bottom:${
         idx === 0 ? 'none' : `2px solid ${accentColor}20`
       };display:flex;align-items:center;gap:10px;page-break-after:avoid;">
       <span style="display:inline-block;width:4px;height:20px;background:${accentColor};border-radius:2px;flex-shrink:0;"></span>${section.title}</h2>`
       if (idx !== 0 && section.metrics && section.metrics.length > 0) html += renderMetricCards(section.metrics, accentColor)
       if (narrative) html += `<div style="font-size:14px;line-height:1.7;color:#334155;">${renderNarrativeContent(narrative)}</div>`
-      if (chartHTML && idx !== 0)
-        html += `<div data-chart="${section.id}" style="margin-top:20px;width:100%;overflow:hidden;page-break-inside:avoid;">${chartHTML}</div>`
+      if (finalChartHTML && idx !== 0)
+        html += `<div data-chart="${section.id}" style="margin-top:20px;width:100%;overflow:hidden;page-break-inside:avoid;">${finalChartHTML}</div>`
       html += '</div>'
       return html
     })
@@ -263,17 +276,20 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
   const hasGeneratedSections =
     report.generated_sections && Array.isArray(report.generated_sections) && report.generated_sections.length > 0
 
-  // ── Parse content (unchanged) ──
+  // ── Parse content (updated to carry chart_data) ──
 
   function parseStructuredContent(
     content: StructuredContent | null,
     fallbackNarrative: string | null,
     generatedSections?: GeneratedSection[] | null
-  ): Record<string, { title: string; content: string; chart_html?: string; order: number; metrics?: GeneratedSection['metrics'] }> {
+  ): Record<
+    string,
+    { title: string; content: string; chart_html?: string; chart_data?: ChartData; order: number; metrics?: GeneratedSection['metrics'] }
+  > {
     if (generatedSections && Array.isArray(generatedSections) && generatedSections.length > 0) {
       const result: Record<
         string,
-        { title: string; content: string; chart_html?: string; order: number; metrics?: GeneratedSection['metrics'] }
+        { title: string; content: string; chart_html?: string; chart_data?: ChartData; order: number; metrics?: GeneratedSection['metrics'] }
       > = {}
       generatedSections
         .filter((s) => s.included)
@@ -284,13 +300,14 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
             title: s.title,
             content: s.content,
             chart_html: s.chart_html || undefined,
+            chart_data: (s as any).chart_data || undefined,
             order: legacyDef?.order || (newDef ? index + 1 : index + 1),
             metrics: s.metrics,
           }
         })
       return result
     }
-    if (content?.sections && Object.keys(content.sections).length > 0) return content.sections
+    if (content?.sections && Object.keys(content.sections).length > 0) return content.sections as any
     if (fallbackNarrative) return parseNarrativeIntoSections(fallbackNarrative)
     return {}
   }
@@ -364,7 +381,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     [reportId]
   )
 
-  // ── Computed (unchanged) ──
+  // ── Computed (updated to carry chart_data) ──
 
   const orderedSections = useMemo(() => {
     const result: Array<{
@@ -372,6 +389,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       title: string
       content: string
       chart_html?: string
+      chart_data?: ChartData
       order: number
       description: string
       required: boolean
@@ -384,6 +402,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         title: section.title,
         content: section.content,
         chart_html: (section as any).chart_html,
+        chart_data: (section as any).chart_data,
         order: section.order,
         description: def?.description || '',
         required: def?.required || false,
@@ -600,7 +619,8 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
   const [showAddMenu, setShowAddMenu] = useState(false)
 
   const exportHTML = useMemo(() => {
-    if (hasGeneratedSections) return renderFormattedSections(orderedSections.filter((s) => s.content), accentColor, userSettings?.custom_disclaimer)
+    if (hasGeneratedSections)
+      return renderFormattedSections(orderedSections.filter((s) => s.content), accentColor, userSettings?.custom_disclaimer)
     return null
   }, [orderedSections, accentColor, userSettings?.custom_disclaimer, hasGeneratedSections])
 
@@ -692,6 +712,13 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         <ExportDropdown options={exportOptions} isExporting={isExporting || emailPreviewLoading} exportStatus={exportStatus} />
       </div>
 
+      {/* ── Verified Badge ── */}
+      {report.validation_log && (
+        <div style={{ padding: '12px 16px', borderBottom: `1px solid ${W.border}`, background: W.bgWarm }}>
+          <VerifiedBadge validationLog={report.validation_log} />
+        </div>
+      )}
+
       {/* ── Content Area ── */}
       <div style={viewMode === 'sections' ? { padding: '32px 0', background: W.bgAlt } : { padding: '32px 0', background: W.bgAlt }}>
         {/* FORMATTED VIEW — paper container (report content fonts unchanged) */}
@@ -716,13 +743,22 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                     const { narrative, chartHTML } = getDisplayContent(section)
                     return (
                       <div key={section.id} data-section={section.id} style={{ marginBottom: '36px' }}>
-                        {chartHTML && idx === 0 && (
-                          <div
-                            data-chart="header"
-                            style={{ marginBottom: '24px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
-                            dangerouslySetInnerHTML={{ __html: chartHTML }}
-                          />
-                        )}
+                        {idx === 0 ? (
+                          section.chart_data ? (
+                            <div
+                              data-chart="header"
+                              style={{ marginBottom: '24px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
+                              dangerouslySetInnerHTML={{ __html: renderChart(section.chart_data as ChartData) }}
+                            />
+                          ) : section.chart_html ? (
+                            <div
+                              data-chart="header"
+                              style={{ marginBottom: '24px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
+                              dangerouslySetInnerHTML={{ __html: section.chart_html }}
+                            />
+                          ) : null
+                        ) : null}
+
                         <h2
                           style={{
                             fontSize: '19px',
@@ -739,25 +775,37 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                           <span style={{ display: 'inline-block', width: '4px', height: '20px', background: accentColor, borderRadius: '2px' }} />
                           {section.title}
                         </h2>
+
                         {idx !== 0 && section.metrics && section.metrics.length > 0 && (
                           <div data-metrics={section.id} dangerouslySetInnerHTML={{ __html: renderMetricCards(section.metrics, accentColor) }} />
                         )}
+
                         {narrative && (
                           <div
                             style={{ fontSize: '14px', lineHeight: '1.7', color: '#334155' }}
                             dangerouslySetInnerHTML={{ __html: renderNarrativeContent(narrative) }}
                           />
                         )}
-                        {chartHTML && idx !== 0 && (
-                          <div
-                            data-chart={section.id}
-                            style={{ marginTop: '20px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
-                            dangerouslySetInnerHTML={{ __html: chartHTML }}
-                          />
-                        )}
+
+                        {idx !== 0 ? (
+                          section.chart_data ? (
+                            <div
+                              data-chart={section.id}
+                              style={{ marginTop: '20px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
+                              dangerouslySetInnerHTML={{ __html: renderChart(section.chart_data as ChartData) }}
+                            />
+                          ) : section.chart_html ? (
+                            <div
+                              data-chart={section.id}
+                              style={{ marginTop: '20px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
+                              dangerouslySetInnerHTML={{ __html: section.chart_html }}
+                            />
+                          ) : null
+                        ) : null}
                       </div>
                     )
                   })}
+
                 {userSettings?.custom_disclaimer && (
                   <div style={{ marginTop: '48px', paddingTop: '20px', borderTop: '1px solid #e2e8f0' }}>
                     <p style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>{userSettings.custom_disclaimer}</p>
@@ -851,7 +899,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                         <div style={{ fontSize: 11, color: W.textMuted, marginTop: 1 }}>
                           {(narrative || section.content).split(/\s+/).filter(Boolean).length} words
                           {section.metrics && section.metrics.length > 0 ? ` · ${section.metrics.length} metrics` : ''}
-                          {chartHTML ? ' · chart' : ''}
+                          {chartHTML || section.chart_data ? ' · chart' : ''}
                         </div>
                       </div>
 
@@ -902,13 +950,18 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                         />
 
                         {/* Chart */}
-                        {chartHTML && (
+                        {section.chart_data || section.chart_html ? (
                           <div style={{ padding: '0 16px 16px' }}>
                             <div style={{ borderRadius: 10, border: `1px solid ${W.borderL}`, overflow: 'hidden', background: W.bgWarm }}>
-                              <div style={{ padding: 16, maxWidth: 960 }} dangerouslySetInnerHTML={{ __html: chartHTML }} />
+                              <div
+                                style={{ padding: 16, maxWidth: 960 }}
+                                dangerouslySetInnerHTML={{
+                                  __html: section.chart_data ? renderChart(section.chart_data as ChartData) : section.chart_html || '',
+                                }}
+                              />
                             </div>
                           </div>
-                        )}
+                        ) : null}
                       </div>
                     )}
                   </div>

@@ -1,3 +1,5 @@
+// report-generator.ts
+
 import { supabaseAdmin as supabase } from './supabase';
 import { parseUploadedFile, validateT12Month } from './file-parser';
 import {
@@ -7,6 +9,7 @@ import {
   buildExtractionUserPrompt,
   buildNarrativeSystemPrompt,
   buildNarrativeUserPrompt,
+  buildUserPreferencesBlock,
   type AIPreferences,
 } from './prompt-templates';
 import { getSectionsForTier, ALL_SECTIONS, TIER_SECTIONS, SectionId } from './section-definitions';
@@ -119,16 +122,25 @@ export interface ReportGenerationInput {
   questionnaireAnswers: Record<string, string>;
 }
 
+export type ChartType =
+  | 'waterfall'
+  | 'horizontal_bar'
+  | 'vertical_bar'
+  | 'comparison_table'
+  | 'metric_cards';
+
 export interface GeneratedSection {
   id: string;
   title: string;
   content: string;
-  chart_html?: string;
+
+  // NEW: chart_data schema (replaces chart_html in structured output)
   chart_data?: {
-    chart_type: string;
-    title: string;
-    data: unknown;
+    chart_type: ChartType;
+    title?: string;
+    data: any; // Schema validated per chart_type
   } | null;
+
   metrics: Array<{
     label: string;
     value: string;
@@ -192,8 +204,32 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
   // Try clean parse
   try {
     const parsed = JSON.parse(jsonContent);
-    const sections = Array.isArray(parsed.sections) ? parsed.sections : [];
+    const sectionsRaw = Array.isArray(parsed.sections) ? parsed.sections : [];
     const analysisSummary = parsed.analysis_summary || parsed.analysisSummary || defaultAnalysis;
+
+    // Back-compat: If any section still returns chart_html, keep parsing but ignore it.
+    const sections: GeneratedSection[] = sectionsRaw.map((s: any) => {
+      const cd = s?.chart_data ?? null;
+      const chart_data =
+        cd && typeof cd === 'object'
+          ? {
+              chart_type: cd.chart_type as ChartType,
+              title: typeof cd.title === 'string' ? cd.title : undefined,
+              data: cd.data,
+            }
+          : null;
+
+      return {
+        id: s.id,
+        title: s.title,
+        content: s.content ?? '',
+        chart_data,
+        metrics: Array.isArray(s.metrics) ? s.metrics : [],
+        calculations: Array.isArray(s.calculations) ? s.calculations : [],
+        included: s.included !== false,
+        skipReason: s.skipReason ?? null,
+      };
+    });
 
     if (sections.length > 0 || parsed.analysis_summary || parsed.analysisSummary) {
       return {
@@ -212,16 +248,44 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
   // Regex recovery for truncated JSON
   try {
     const sections: GeneratedSection[] = [];
+
+    // NOTE: This recovery focuses on id/title/content/metrics/included/skipReason.
+    // chart_data is optional and may be missing in truncated output; we set it to null.
     const sectionRegex =
-      /\{\s*"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*(?:"chart_html"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*)?"metrics"\s*:\s*(\[[\s\S]*?\])\s*,\s*"included"\s*:\s*(true|false)\s*,\s*"skipReason"\s*:\s*(null|"[^"]*")\s*\}/g;
+      /\{\s*"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*(?:"chart_data"\s*:\s*(\{[\s\S]*?\})\s*,\s*)?"metrics"\s*:\s*(\[[\s\S]*?\])\s*,\s*"included"\s*:\s*(true|false)\s*,\s*"skipReason"\s*:\s*(null|"[^"]*")\s*\}/g;
 
     let match: RegExpExecArray | null;
     while ((match = sectionRegex.exec(jsonContent)) !== null) {
+      const chartDataStr = match[4];
+
+      let chart_data: GeneratedSection['chart_data'] = null;
+      if (chartDataStr) {
+        try {
+          const cd = JSON.parse(chartDataStr);
+          if (cd && typeof cd === 'object' && typeof cd.chart_type === 'string') {
+            chart_data = {
+              chart_type: cd.chart_type as ChartType,
+              title: typeof cd.title === 'string' ? cd.title : undefined,
+              data: cd.data,
+            };
+          }
+        } catch {
+          chart_data = null;
+        }
+      }
+
       try {
         const parsed = JSON.parse(match[0]);
         sections.push({
           ...parsed,
-          chart_data: parsed.chart_data || null,
+          chart_data:
+            parsed.chart_data && typeof parsed.chart_data === 'object'
+              ? {
+                  chart_type: parsed.chart_data.chart_type as ChartType,
+                  title: typeof parsed.chart_data.title === 'string' ? parsed.chart_data.title : undefined,
+                  data: parsed.chart_data.data,
+                }
+              : chart_data,
           calculations: Array.isArray(parsed.calculations) ? parsed.calculations : [],
         });
       } catch {
@@ -229,8 +293,7 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
           id: match[1],
           title: match[2],
           content: match[3].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\'),
-          chart_html: match[4] ? match[4].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\') : '',
-          chart_data: null,
+          chart_data,
           metrics: tryParseArray(match[5]),
           calculations: [],
           included: match[6] === 'true',
@@ -259,7 +322,7 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
         id: 'executive_summary',
         title: 'Report',
         content: fullText,
-        chart_html: '',
+        chart_data: null,
         metrics: [],
         included: true,
         skipReason: null,
@@ -291,11 +354,21 @@ function parseRegeneratedSection(resultText: string, fallback: GeneratedSection)
   try {
     const obj = JSON.parse(jsonStr);
     if (obj && obj.id && obj.title) {
+      const cd = obj.chart_data ?? null;
+      const chart_data =
+        cd && typeof cd === 'object'
+          ? {
+              chart_type: cd.chart_type as ChartType,
+              title: typeof cd.title === 'string' ? cd.title : undefined,
+              data: cd.data,
+            }
+          : null;
+
       return {
         id: obj.id,
         title: obj.title,
         content: obj.content || '',
-        chart_html: obj.chart_html || '',
+        chart_data,
         metrics: Array.isArray(obj.metrics) ? obj.metrics : [],
         included: obj.included !== false,
         skipReason: obj.skipReason ?? null,
@@ -563,7 +636,6 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
   // Wrap the stream: pass through all chunks, but also collect the full text
   // for post-generation validation
   let fullText = '';
-  const encoder = new TextEncoder();
   const decoder = new TextDecoder();
 
   const validatingStream = new ReadableStream<Uint8Array>({
@@ -689,15 +761,15 @@ async function runPostGenerationValidation(
 
         // Apply corrections to the saved sections
         for (const [sectionId, corrections] of validationResult.corrections) {
-          const section = currentSections.find(s => s.id === sectionId);
+          const section = currentSections.find(s => (s as any).id === sectionId);
           if (!section) continue;
 
           // Update calculations with corrected values
-          const calcs = (section.calculations || []) as Array<{
+          const calcs = (((section as any).calculations || []) as Array<{
             metric_name: string;
             ai_result: number;
             inputs: Record<string, number>;
-          }>;
+          }>);
           for (const correction of corrections) {
             const calc = calcs.find(c => c.metric_name === correction.metric_name);
             if (calc) {
@@ -737,7 +809,11 @@ async function runPostGenerationValidation(
  */
 function parseGeneratedJSONForValidation(
   text: string
-): Array<{ id: string; calculations?: Array<{ metric_name: string; inputs: Record<string, number>; formula: string; ai_result: number }>; metrics: Array<{ label: string; value: string; change?: string }> }> | null {
+): Array<{
+  id: string;
+  calculations?: Array<{ metric_name: string; inputs: Record<string, number>; formula: string; ai_result: number }>;
+  metrics: Array<{ label: string; value: string; change?: string }>;
+}> | null {
   try {
     let jsonStr = text.trim();
     const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]+?)```/);
@@ -789,7 +865,8 @@ async function buildLegacyPrompts(input: ReportGenerationInput, fileContents: Re
     }
   }
 
-  const systemPrompt = buildSystemPrompt({
+  // Build the system prompt as before
+  let systemPrompt = buildSystemPrompt({
     tier: input.tier,
     propertyName: property?.name || 'Unknown Property',
     propertyAddress: property?.address,
@@ -804,6 +881,10 @@ async function buildLegacyPrompts(input: ReportGenerationInput, fileContents: Re
         }
       : undefined,
   });
+
+  // Inject user preferences block AFTER the tier block (appended to system prompt)
+  const preferencesBlock = buildUserPreferencesBlock((settings?.ai_preferences as Record<string, unknown>) || {});
+  systemPrompt += '\n' + preferencesBlock;
 
   const sections = await getSectionsForUser(input.userId, input.tier);
 
@@ -932,7 +1013,8 @@ export async function regenerateSingleSection(params: {
 
   const { data: settings } = await supabase.from('user_settings').select('*').eq('user_id', params.userId).single();
 
-  const systemPrompt = buildSystemPrompt({
+  // Build the system prompt as before
+  let systemPrompt = buildSystemPrompt({
     tier,
     propertyName: property.name,
     propertyAddress: property.address,
@@ -947,6 +1029,10 @@ export async function regenerateSingleSection(params: {
       : undefined,
   });
 
+  // Inject user preferences block AFTER the tier block (appended to system prompt)
+  const preferencesBlock = buildUserPreferencesBlock((settings?.ai_preferences as Record<string, unknown>) || {});
+  systemPrompt += '\n' + preferencesBlock;
+
   const { regenerateSection: callRegenerate } = await import('./claude');
   const result = await callRegenerate(
     systemPrompt,
@@ -954,7 +1040,16 @@ export async function regenerateSingleSection(params: {
 CURRENT: ${currentSection.content}
 FEEDBACK: ${params.userNotes}
 GUIDELINES: ${sectionDef.promptGuidance}
-Return ONLY a JSON object (no markdown fences): { "id": "${params.sectionId}", "title": "${sectionDef.title}", "content": "...", "chart_html": "", "metrics": [...], "included": true, "skipReason": null }`
+Return ONLY a JSON object (no markdown fences):
+{
+  "id": "${params.sectionId}",
+  "title": "${sectionDef.title}",
+  "content": "...",
+  "chart_data": { "chart_type": "vertical_bar", "title": "Optional", "data": {} },
+  "metrics": [...],
+  "included": true,
+  "skipReason": null
+}`
   );
 
   const regenerated = parseRegeneratedSection(result, currentSection);

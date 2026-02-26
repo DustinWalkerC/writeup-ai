@@ -40,7 +40,7 @@
 
 import { SectionDefinition } from './section-definitions';
 import { buildVisualizationTemplatesBlock } from './chart-templates/index';
-import { buildSectionLengthRulesBlock, buildChartAccessBlock } from './generation-config';
+import { buildSectionLengthRulesBlock } from './generation-config';
 
 const MONTH_NAMES = [
   'January','February','March','April','May','June',
@@ -60,6 +60,73 @@ export interface AIPreferences {
   include_forward_outlook?: boolean;
   risk_severity_labels?: 'monitor_action' | 'low_med_high';
   cross_section_insights?: boolean;
+}
+
+// ═══════════════════════════════════════════════════════════
+// USER PREFERENCES XML BLOCK (EXPORT)
+// ═══════════════════════════════════════════════════════════
+
+export function buildUserPreferencesBlock(prefs: {
+  writing_tone?: string;
+  analysis_depth?: string;
+  terminology_level?: string;
+  variance_threshold?: number;
+  negative_format?: string;
+  risk_severity_labels?: string;
+  cross_section_insights?: boolean;
+  include_forward_outlook?: boolean;
+}): string {
+  return `<user_preferences>
+  <writing_tone>${prefs.writing_tone || 'professional'}</writing_tone>
+  <analysis_depth>${prefs.analysis_depth || 'standard'}</analysis_depth>
+  <terminology_level>${prefs.terminology_level || 'standard_cre'}</terminology_level>
+  <variance_threshold>${prefs.variance_threshold || 5}%</variance_threshold>
+  <negative_format>${prefs.negative_format || 'parenthetical'}</negative_format>
+  <risk_severity_labels>${prefs.risk_severity_labels || 'monitor_action'}</risk_severity_labels>
+  <cross_section_insights>${prefs.cross_section_insights ? 'enabled' : 'disabled'}</cross_section_insights>
+  <include_forward_outlook>${prefs.include_forward_outlook !== false ? 'yes' : 'no'}</include_forward_outlook>
+</user_preferences>`;
+}
+
+// ═══════════════════════════════════════════════════════════
+// CHART ACCESS RULES (PER-REQUEST)
+// ═══════════════════════════════════════════════════════════
+
+export function buildChartAccessBlock(sectionIds: string[], tier: string): string {
+  return `
+<chart_output_rules>
+When a section needs a chart, output chart_data as JSON instead of HTML.
+Supported chart types: waterfall, horizontal_bar, vertical_bar, comparison_table, metric_cards.
+
+Example waterfall (NOI bridge):
+{
+  "chart_type": "waterfall",
+  "title": "NOI Bridge",
+  "data": {
+    "starting_value": 277826,
+    "ending_value": 113848,
+    "components": [
+      {"label": "Total Revenue", "value": 277826, "type": "start"},
+      {"label": "Operating Expenses", "value": -163978, "type": "decrease"},
+      {"label": "NOI", "value": 113848, "type": "end"}
+    ]
+  }
+}
+
+Example metric_cards (KPI row):
+{
+  "chart_type": "metric_cards",
+  "data": {
+    "cards": [
+      {"label": "Occupancy", "value": "91.4%", "change_pct": -0.9, "trend": "down"},
+      {"label": "NOI", "value": 113848, "change_pct": 25.8, "trend": "up", "format": "currency"},
+      {"label": "Revenue", "value": 277826, "change_pct": -1.2, "trend": "down", "format": "currency"}
+    ]
+  }
+}
+
+IMPORTANT: Output ONLY the JSON data. The backend renders the visual chart.
+</chart_output_rules>`;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -273,24 +340,20 @@ The response will be parsed by JSON.parse() directly.
  * Controls writing style per the user's saved preferences.
  * Returns null if no preferences set (uses defaults from writing_standards).
  */
-function buildUserPreferencesBlock(prefs?: AIPreferences | null): string | null {
+function buildUserPreferencesBlockOrNull(prefs?: AIPreferences | null): string | null {
   if (!prefs) return null;
 
-  const lines: string[] = [];
-  if (prefs.writing_tone) lines.push(`writing_tone: ${prefs.writing_tone}`);
-  if (prefs.analysis_depth) lines.push(`analysis_depth: ${prefs.analysis_depth}`);
-  if (prefs.terminology) lines.push(`terminology: ${prefs.terminology}`);
-  if (prefs.variance_threshold !== undefined) lines.push(`variance_threshold: ${prefs.variance_threshold}`);
-  if (prefs.negative_format) lines.push(`negative_format: ${prefs.negative_format}`);
-  if (prefs.include_forward_outlook !== undefined) lines.push(`include_forward_outlook: ${prefs.include_forward_outlook}`);
-  if (prefs.risk_severity_labels) lines.push(`risk_severity_labels: ${prefs.risk_severity_labels}`);
-  if (prefs.cross_section_insights !== undefined) lines.push(`cross_section_insights: ${prefs.cross_section_insights}`);
-
-  if (lines.length === 0) return null;
-
-  return `<user_preferences>
-${lines.join('\n')}
-</user_preferences>`;
+  // Map legacy/internal AIPreferences -> exported XML prefs shape
+  return buildUserPreferencesBlock({
+    writing_tone: prefs.writing_tone,
+    analysis_depth: prefs.analysis_depth,
+    terminology_level: prefs.terminology,
+    variance_threshold: prefs.variance_threshold,
+    negative_format: prefs.negative_format,
+    risk_severity_labels: prefs.risk_severity_labels,
+    cross_section_insights: prefs.cross_section_insights,
+    include_forward_outlook: prefs.include_forward_outlook,
+  });
 }
 
 /**
@@ -623,7 +686,7 @@ export function buildNarrativeSystemPrompt(params: {
   const perRequestBlocks: string[] = [];
 
   // Block 9: User preferences
-  const prefsBlock = buildUserPreferencesBlock(params.aiPreferences);
+  const prefsBlock = buildUserPreferencesBlockOrNull(params.aiPreferences);
   if (prefsBlock) perRequestBlocks.push(prefsBlock);
 
   // Block 10: Property context

@@ -4,10 +4,10 @@ import { ReportViewer } from './report-viewer'
 import { getUserSettings } from '@/app/actions/settings'
 import { UserSettings } from '@/lib/supabase'
 
-export default async function ReportPage({ 
-  params 
-}: { 
-  params: Promise<{ id: string }> 
+export default async function ReportPage({
+  params,
+}: {
+  params: Promise<{ id: string }>
 }) {
   const { id } = await params
   const report = await getReport(id)
@@ -28,11 +28,13 @@ export default async function ReportPage({
   const userSettings = await getUserSettings()
 
   return (
-    <ReportViewer 
-      report={report as any}
-      reportId={id}
+    <ReportViewer
+      reportId={report.id}
+      report={{
+        ...(report as any),
+        validation_log: (report as any).validation_log,
+      }}
       userSettings={userSettings as UserSettings | null}
     />
   )
 }
-

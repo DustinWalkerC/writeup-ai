@@ -362,6 +362,40 @@ export default function GenerateClient({
           </p>
         </div>
         <div className="flex gap-3">
+          {/* Prepare Another Report — shows during generation AND after completion */}
+          {(status === 'generating' || status === 'completed') && (
+            <button
+              onClick={() => router.push('/dashboard/reports/new')}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 6,
+                padding: '9px 18px',
+                fontSize: 13,
+                fontWeight: 600,
+                color: '#4A4A4A',
+                background: '#FFFFFF',
+                border: '1.5px solid #E8E5E0',
+                borderRadius: 10,
+                cursor: 'pointer',
+                transition: 'all 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
+                textDecoration: 'none',
+              }}
+              onMouseEnter={e => {
+                e.currentTarget.style.borderColor = '#00B7DB50';
+                e.currentTarget.style.background = '#00B7DB06';
+              }}
+              onMouseLeave={e => {
+                e.currentTarget.style.borderColor = '#E8E5E0';
+                e.currentTarget.style.background = '#FFFFFF';
+              }}
+            >
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M7 3V11M3 7H11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+              </svg>
+              Prepare Another Report
+            </button>
+          )}
           {status === 'completed' && (
             <>
               <button onClick={handleGenerate}

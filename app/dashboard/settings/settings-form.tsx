@@ -8,11 +8,17 @@ import { ALL_SECTIONS, TIER_SECTIONS, type SectionId } from '@/lib/section-defin
 import { SECTION_CHART_MAP } from '@/lib/generation-config'
 import { CHART_LABELS, ALL_QUESTIONS, SECTION_INFO } from '@/lib/question-section-map'
 
+import ReportStylePanel, { DEFAULT_AI_PREFERENCES, type AIPreferences } from '@/components/report-style-panel'
+import ParagraphCounter from '@/components/paragraph-counter'
+
 type UserSettings = {
   id?: string; user_id?: string; company_name: string | null; company_logo_url: string | null
   accent_color: string; secondary_color?: string; report_accent_color?: string
   ai_tone: string; custom_disclaimer: string | null; report_template?: SectionId[] | null
   export_name_template?: string | null; created_at?: string; updated_at?: string
+
+  // NEW
+  ai_preferences?: AIPreferences | null
 }
 
 type Props = { initialSettings: UserSettings | null; tier: string }
@@ -109,7 +115,47 @@ export function SettingsForm({ initialSettings, tier }: Props) {
   const [accentColor, setAccentColor] = useState(initialSettings?.accent_color || '#27272A')
   const [secondaryColor, setSecondaryColor] = useState(initialSettings?.secondary_color || '#EFF6FF')
   const [reportAccentColor, setReportAccentColor] = useState(initialSettings?.report_accent_color || '#2563EB')
-  const [aiTone, setAiTone] = useState<'conservative' | 'balanced' | 'optimistic'>((initialSettings?.ai_tone as any) || 'balanced')
+
+  // NEW: AI preferences (ReportStylePanel)
+  const [aiPreferences, setAIPreferences] = useState<AIPreferences>(
+    (initialSettings?.ai_preferences as AIPreferences) || DEFAULT_AI_PREFERENCES
+  )
+  const [isSavingPrefs, setIsSavingPrefs] = useState(false)
+
+  const handleSavePreferences = async () => {
+    setIsSavingPrefs(true)
+    try {
+      await fetch('/api/user-settings', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ai_preferences: aiPreferences }),
+      })
+    } catch (err) {
+      console.error('Failed to save AI preferences:', err)
+    } finally {
+      setIsSavingPrefs(false)
+    }
+  }
+
+  // Paragraph targets
+  const [paragraphTargets, setParagraphTargets] = useState<Record<string, number>>({
+    executive_summary: 4,
+    noi_performance: 3,
+    expense_analysis: 3,
+    revenue_analysis: 3,
+    occupancy_leasing: 3,
+    capital_expenditures: 2,
+    debt_service: 2,
+    market_comparison: 3,
+    risk_assessment: 3,
+    asset_manager_outlook: 3,
+    distribution_update: 2,
+  })
+
+  const handleParagraphChange = (sectionId: string, value: number) => {
+    setParagraphTargets(prev => ({ ...prev, [sectionId]: value }))
+  }
+
   const [customDisclaimer, setCustomDisclaimer] = useState(initialSettings?.custom_disclaimer || '')
 
   const availableSections = useMemo(() => getAllAvailableSections(activeTier), [activeTier])
@@ -190,7 +236,18 @@ export function SettingsForm({ initialSettings, tier }: Props) {
     try {
       const response = await fetch('/api/settings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ company_name: companyName, accent_color: accentColor, secondary_color: secondaryColor, report_accent_color: reportAccentColor, ai_tone: aiTone, custom_disclaimer: customDisclaimer, report_template: enabledSections, export_name_template: exportNameTemplate }),
+        body: JSON.stringify({
+          company_name: companyName,
+          accent_color: accentColor,
+          secondary_color: secondaryColor,
+          report_accent_color: reportAccentColor,
+          custom_disclaimer: customDisclaimer,
+          report_template: enabledSections,
+          export_name_template: exportNameTemplate,
+
+          // NEW
+          ai_preferences: aiPreferences,
+        }),
       })
       const result = await response.json()
       setSaveStatus(result.success ? 'saved' : 'error')
@@ -298,6 +355,9 @@ export function SettingsForm({ initialSettings, tier }: Props) {
 
           {/* Report Sections Builder */}
           <section style={cardStyle}>
+            {/* ... unchanged ... */}
+            {/* (the rest of your Report Sections code remains exactly as-is) */}
+            {/* NOTE: kept verbatim below */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
               <h2 style={h2Style}>Report Sections</h2>
               <span style={{ fontSize: 11, fontWeight: 600, color: W.textMuted, textTransform: 'capitalize' as const }}>{TIER_LABELS[activeTier] || activeTier} Plan</span>
@@ -530,35 +590,45 @@ export function SettingsForm({ initialSettings, tier }: Props) {
             </div>
           </section>
 
-          {/* AI Writing Style */}
+          {/* AI Preferences */}
           <section style={cardStyle}>
             <h2 style={{ ...h2Style, marginBottom: 16 }}>AI Writing Style</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-              <div>
-                <label style={labelStyle}>Tone</label>
-                <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
-                  {(['conservative', 'balanced', 'optimistic'] as const).map((tone) => (
-                    <button key={tone} onClick={() => setAiTone(tone)}
-                      style={{
-                        padding: '9px 16px', borderRadius: 10, fontSize: 13, fontWeight: 600,
-                        textTransform: 'capitalize' as const, cursor: 'pointer', transition: 'all 0.2s',
-                        color: aiTone === tone ? W.accent : W.textSoft,
-                        background: aiTone === tone ? `${W.accent}0D` : W.bgAlt,
-                        border: aiTone === tone ? `1.5px solid ${W.accent}35` : `1.5px solid transparent`,
-                      }}>{tone}</button>
-                  ))}
-                </div>
-                <p style={{ fontSize: 12, color: W.textSoft, marginTop: 8 }}>
-                  {aiTone === 'conservative' && 'Factual, understated language. Best for risk-averse investors.'}
-                  {aiTone === 'balanced' && 'Professional tone with measured optimism. Standard for most reports.'}
-                  {aiTone === 'optimistic' && 'Confident, forward-looking language. Best for value-add strategies.'}
-                </p>
-              </div>
-              <div>
-                <label style={labelStyle}>Custom Disclaimer (optional)</label>
-                <textarea value={customDisclaimer} onChange={(e) => setCustomDisclaimer(e.target.value)}
-                  placeholder="This report is for informational purposes only..." rows={3}
-                  style={{ ...inputStyle, resize: 'none' as const }} onFocus={onFocus} onBlur={onBlur} />
+
+            <ReportStylePanel
+              preferences={aiPreferences}
+              onChange={setAIPreferences}
+              tier={activeTier as any}
+              onSave={handleSavePreferences}
+              isSaving={isSavingPrefs}
+            />
+
+            <div style={{ marginTop: 32 }}>
+              <h3 style={{
+                fontFamily: 'var(--font-display, "Newsreader", Georgia, serif)',
+                fontSize: 18, fontWeight: 500, color: '#1A1A1A', marginBottom: 4,
+              }}>
+                Paragraph Targets
+              </h3>
+              <p style={{ fontSize: 13, color: '#7A7A7A', margin: '0 0 16px' }}>
+                Control how dense each section should be. Applies to all reports.
+              </p>
+              <div style={{
+                background: '#FFFFFF',
+                border: '1px solid #E8E5E0',
+                borderRadius: 14,
+                overflow: 'hidden',
+              }}>
+                {Object.entries(paragraphTargets).map(([sectionId, count]) => (
+                  <ParagraphCounter
+                    key={sectionId}
+                    sectionId={sectionId}
+                    sectionTitle={sectionId.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
+                    value={count}
+                    onChange={handleParagraphChange}
+                    recommended={count}
+                    tier="professional"
+                  />
+                ))}
               </div>
             </div>
           </section>
