@@ -50,7 +50,8 @@ export function ExportDropdown({ options, isExporting, exportStatus }: Props) {
         <button
           onClick={() => setIsOpen(!isOpen)}
           disabled={isExporting}
-          className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-cyan-600 to-teal-600 text-white rounded-lg hover:from-cyan-700 hover:to-teal-700 disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm transition-all shadow-sm"
+          className="flex items-center gap-2 px-4 py-2 text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed font-medium text-sm transition-all shadow-sm"
+          style={{ background: '#00B7DB' }}
         >
           {isExporting ? (
             <>

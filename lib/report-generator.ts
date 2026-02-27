@@ -24,6 +24,13 @@ import { buildRegistryFromExtraction, type SourceDataRegistry } from './source-d
 import { SERVER_DEV_FLAGS } from './dev-config';
 import { SECTION_STATUS_MAP } from './progress-engine';
 
+// ── Phase 5: Chart template filler ──
+import {
+  fillChartTemplate,
+  type BrandColors,
+  type ChartTemplateData,
+} from './chart-template-filler';
+
 const MONTH_NAMES = [
   'January','February','March','April','May','June',
   'July','August','September','October','November','December',
@@ -127,18 +134,30 @@ export type ChartType =
   | 'horizontal_bar'
   | 'vertical_bar'
   | 'comparison_table'
-  | 'metric_cards';
+  | 'metric_cards'
+  // Phase 5 chart types (matching chart-template-filler.ts)
+  | 'report_header'
+  | 'budget_variance_table'
+  | 'revenue_waterfall'
+  | 'expense_horizontal_bars'
+  | 'occupancy_gauge'
+  | 'noi_trend_bars'
+  | 'rent_roll_table'
+  | 'risk_cards'
+  | 'move_in_out_bars';
 
 export interface GeneratedSection {
   id: string;
   title: string;
   content: string;
+  chart_html?: string;
 
-  // NEW: chart_data schema (replaces chart_html in structured output)
+  // Phase 5: chart_data schema
   chart_data?: {
-    chart_type: ChartType;
+    chart_type: ChartType | string;
     title?: string;
-    data: any; // Schema validated per chart_type
+    subtitle?: string;
+    data: any;
   } | null;
 
   metrics: Array<{
@@ -170,6 +189,73 @@ type ClaudeParsed = {
   sections: GeneratedSection[];
   analysisSummary: { overall_sentiment: string; key_findings: string[]; data_quality_notes: string[] };
 };
+
+// ═══════════════════════════════════════════════════════════
+// Phase 5: Chart Template Filling
+// Takes chart_data from Claude's output and fills chart_html
+// using the same templates from standard.ts
+// ═══════════════════════════════════════════════════════════
+
+/**
+ * Process an array of generated sections: for each section that has
+ * chart_data but no chart_html, fill chart_html using the template filler.
+ *
+ * This produces the EXACT same HTML that Claude used to generate,
+ * but deterministically from structured data — no token cost for the HTML.
+ *
+ * Mutates the sections array in-place and returns it.
+ */
+function fillSectionChartTemplates(
+  sections: GeneratedSection[],
+  brandColors?: { primary: string; secondary: string; accent: string }
+): GeneratedSection[] {
+  const colors: Partial<BrandColors> = brandColors
+    ? {
+        primary: brandColors.primary,
+        secondary: brandColors.secondary,
+        accent: brandColors.accent,
+      }
+    : undefined as any;
+
+  for (const section of sections) {
+    // Skip if section already has chart_html (backward compat with legacy pipeline)
+    if (section.chart_html && section.chart_html.trim().length > 0) {
+      continue;
+    }
+
+    // If chart_data exists, fill chart_html from it
+    if (section.chart_data && section.chart_data.chart_type) {
+      try {
+        const filledHtml = fillChartTemplate(
+          section.chart_data as ChartTemplateData,
+          colors
+        );
+        if (filledHtml) {
+          section.chart_html = filledHtml;
+        }
+      } catch (err) {
+        console.warn(
+          `[Phase5] Failed to fill chart template for section "${section.id}" (chart_type: ${section.chart_data.chart_type}):`,
+          err
+        );
+        // Leave chart_html empty — viewer will try chart_data → renderChart() fallback
+      }
+    }
+  }
+
+  return sections;
+}
+
+/**
+ * Validate chart_data structure. Returns true if the chart_data
+ * has the minimum required fields for its chart_type.
+ */
+function validateChartData(chartData: any): boolean {
+  if (!chartData || typeof chartData !== 'object') return false;
+  if (!chartData.chart_type || typeof chartData.chart_type !== 'string') return false;
+  if (!chartData.data && chartData.chart_type !== 'report_header') return false;
+  return true;
+}
 
 // ═══════════════════════════════════════════════════════════
 // JSON Parsing (shared by both pipelines)
@@ -207,22 +293,24 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
     const sectionsRaw = Array.isArray(parsed.sections) ? parsed.sections : [];
     const analysisSummary = parsed.analysis_summary || parsed.analysisSummary || defaultAnalysis;
 
-    // Back-compat: If any section still returns chart_html, keep parsing but ignore it.
     const sections: GeneratedSection[] = sectionsRaw.map((s: any) => {
+      // Parse chart_data — validate structure
       const cd = s?.chart_data ?? null;
-      const chart_data =
-        cd && typeof cd === 'object'
-          ? {
-              chart_type: cd.chart_type as ChartType,
-              title: typeof cd.title === 'string' ? cd.title : undefined,
-              data: cd.data,
-            }
-          : null;
+      let chart_data: GeneratedSection['chart_data'] = null;
+      if (cd && typeof cd === 'object' && validateChartData(cd)) {
+        chart_data = {
+          chart_type: cd.chart_type as ChartType,
+          title: typeof cd.title === 'string' ? cd.title : undefined,
+          subtitle: typeof cd.subtitle === 'string' ? cd.subtitle : undefined,
+          data: cd.data,
+        };
+      }
 
       return {
         id: s.id,
         title: s.title,
         content: s.content ?? '',
+        chart_html: typeof s.chart_html === 'string' ? s.chart_html : '',
         chart_data,
         metrics: Array.isArray(s.metrics) ? s.metrics : [],
         calculations: Array.isArray(s.calculations) ? s.calculations : [],
@@ -249,23 +337,22 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
   try {
     const sections: GeneratedSection[] = [];
 
-    // NOTE: This recovery focuses on id/title/content/metrics/included/skipReason.
-    // chart_data is optional and may be missing in truncated output; we set it to null.
     const sectionRegex =
-      /\{\s*"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*(?:"chart_data"\s*:\s*(\{[\s\S]*?\})\s*,\s*)?"metrics"\s*:\s*(\[[\s\S]*?\])\s*,\s*"included"\s*:\s*(true|false)\s*,\s*"skipReason"\s*:\s*(null|"[^"]*")\s*\}/g;
+      /\{\s*"id"\s*:\s*"([^"]+)"\s*,\s*"title"\s*:\s*"([^"]+)"\s*,\s*"content"\s*:\s*"((?:[^"\\]|\\.)*)"\s*,\s*(?:"chart_html"\s*:\s*"(?:[^"\\]|\\.)*"\s*,\s*)?(?:"chart_data"\s*:\s*(\{[\s\S]*?\}|null)\s*,\s*)?"metrics"\s*:\s*(\[[\s\S]*?\])\s*,\s*"included"\s*:\s*(true|false)\s*,\s*"skipReason"\s*:\s*(null|"[^"]*")\s*\}/g;
 
     let match: RegExpExecArray | null;
     while ((match = sectionRegex.exec(jsonContent)) !== null) {
       const chartDataStr = match[4];
 
       let chart_data: GeneratedSection['chart_data'] = null;
-      if (chartDataStr) {
+      if (chartDataStr && chartDataStr !== 'null') {
         try {
           const cd = JSON.parse(chartDataStr);
-          if (cd && typeof cd === 'object' && typeof cd.chart_type === 'string') {
+          if (validateChartData(cd)) {
             chart_data = {
               chart_type: cd.chart_type as ChartType,
               title: typeof cd.title === 'string' ? cd.title : undefined,
+              subtitle: typeof cd.subtitle === 'string' ? cd.subtitle : undefined,
               data: cd.data,
             };
           }
@@ -276,14 +363,17 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
 
       try {
         const parsed = JSON.parse(match[0]);
+        const pcd = parsed.chart_data;
         sections.push({
           ...parsed,
+          chart_html: typeof parsed.chart_html === 'string' ? parsed.chart_html : '',
           chart_data:
-            parsed.chart_data && typeof parsed.chart_data === 'object'
+            pcd && typeof pcd === 'object' && validateChartData(pcd)
               ? {
-                  chart_type: parsed.chart_data.chart_type as ChartType,
-                  title: typeof parsed.chart_data.title === 'string' ? parsed.chart_data.title : undefined,
-                  data: parsed.chart_data.data,
+                  chart_type: pcd.chart_type as ChartType,
+                  title: typeof pcd.title === 'string' ? pcd.title : undefined,
+                  subtitle: typeof pcd.subtitle === 'string' ? pcd.subtitle : undefined,
+                  data: pcd.data,
                 }
               : chart_data,
           calculations: Array.isArray(parsed.calculations) ? parsed.calculations : [],
@@ -293,6 +383,7 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
           id: match[1],
           title: match[2],
           content: match[3].replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\'),
+          chart_html: '',
           chart_data,
           metrics: tryParseArray(match[5]),
           calculations: [],
@@ -322,6 +413,7 @@ function parseGeneratedJSON(fullText: string): ClaudeParsed {
         id: 'executive_summary',
         title: 'Report',
         content: fullText,
+        chart_html: '',
         chart_data: null,
         metrics: [],
         included: true,
@@ -355,19 +447,21 @@ function parseRegeneratedSection(resultText: string, fallback: GeneratedSection)
     const obj = JSON.parse(jsonStr);
     if (obj && obj.id && obj.title) {
       const cd = obj.chart_data ?? null;
-      const chart_data =
-        cd && typeof cd === 'object'
-          ? {
-              chart_type: cd.chart_type as ChartType,
-              title: typeof cd.title === 'string' ? cd.title : undefined,
-              data: cd.data,
-            }
-          : null;
+      let chart_data: GeneratedSection['chart_data'] = null;
+      if (cd && typeof cd === 'object' && validateChartData(cd)) {
+        chart_data = {
+          chart_type: cd.chart_type as ChartType,
+          title: typeof cd.title === 'string' ? cd.title : undefined,
+          subtitle: typeof cd.subtitle === 'string' ? cd.subtitle : undefined,
+          data: cd.data,
+        };
+      }
 
       return {
         id: obj.id,
         title: obj.title,
         content: obj.content || '',
+        chart_html: typeof obj.chart_html === 'string' ? obj.chart_html : '',
         chart_data,
         metrics: Array.isArray(obj.metrics) ? obj.metrics : [],
         included: obj.included !== false,
@@ -526,7 +620,6 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
     : null;
 
   // Build budget summary from extracted data (if budget was found)
-  // Use safe access — extractedData shape comes from extraction-schema.ts
   const rawExtracted = extractedData as unknown as Record<string, unknown>;
   const rawNoi = rawExtracted.noi as Record<string, number | null> | undefined;
   const rawIncome = rawExtracted.income as Record<string, Record<string, number | null>> | undefined;
@@ -634,9 +727,16 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
   }
 
   // Wrap the stream: pass through all chunks, but also collect the full text
-  // for post-generation validation
+  // for post-generation validation + Phase 5 chart template filling
   let fullText = '';
   const decoder = new TextDecoder();
+
+  // Pass brandColors to post-generation processing for Phase 5
+  const reportBrandColors = {
+    primary: brandColors.primary,
+    secondary: brandColors.secondary,
+    accent: brandColors.accent,
+  };
 
   const validatingStream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -666,8 +766,8 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
           writeGenerationProgress(reportId, Math.min(estimatedProgress, 90), statusText);
         }
 
-        // Stream complete — run validation in background (don't block the client)
-        runPostGenerationValidation(reportId, fullText, sourceRegistry, input.tier)
+        // Stream complete — run validation + chart filling in background
+        runPostGenerationValidation(reportId, fullText, sourceRegistry, input.tier, reportBrandColors)
           .catch(err => console.error('[CORE] Post-generation validation error:', err));
 
         controller.close();
@@ -681,23 +781,19 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
 }
 
 // ═══════════════════════════════════════════════════════════
-// Post-Generation Validation (runs after stream completes)
+// Post-Generation Validation + Phase 5 Chart Filling
+// (runs after stream completes)
 // ═══════════════════════════════════════════════════════════
 
 async function runPostGenerationValidation(
   reportId: string,
   fullStreamText: string,
   registry: SourceDataRegistry | null,
-  tier: string
+  tier: string,
+  brandColors?: { primary: string; secondary: string; accent: string }
 ): Promise<void> {
-  if (SERVER_DEV_FLAGS.skipValidation) {
-    console.log('[CORE] Validation skipped (SKIP_VALIDATION=true)');
-    return;
-  }
-
   try {
     // Parse the streamed response to extract sections
-    // We need to reconstruct from the SSE stream format
     let narrativeText = '';
     const lines = fullStreamText.split('\n');
     for (const line of lines) {
@@ -718,68 +814,75 @@ async function runPostGenerationValidation(
       narrativeText = fullStreamText;
     }
 
-    // Parse the narrative JSON
-    const parsed = parseGeneratedJSONForValidation(narrativeText);
-    if (!parsed || parsed.length === 0) {
-      console.warn('[CORE] Could not parse sections for validation');
+    // ── Phase 5: Parse full sections (not just for validation) ──
+    const fullParsed = parseGeneratedJSONFull(narrativeText);
+    if (!fullParsed || fullParsed.length === 0) {
+      console.warn('[CORE] Could not parse sections for post-generation processing');
       return;
     }
 
-    // Run three-layer validation
-    const validationResult: ValidatorResult = validateReport(parsed, registry);
-
-    // Apply corrections to sections (updates calculations and metrics in-place)
-    applyCorrections(parsed, validationResult.log.details);
-
-    // Log results
-    if (SERVER_DEV_FLAGS.logValidation) {
-      console.log('[CORE] Validation complete:', {
-        total: validationResult.log.total_calculations,
-        passed: validationResult.log.passed,
-        overridden: validationResult.log.overridden,
-        materialOverrides: validationResult.log.material_overrides,
-        sectionsToRegen: validationResult.sectionsToRegenerate,
-      });
+    // ── Phase 5: Fill chart templates from chart_data ──
+    if (brandColors) {
+      fillSectionChartTemplates(fullParsed, brandColors);
+      console.log(`[Phase5] Chart templates filled for ${fullParsed.filter(s => s.chart_html && s.chart_html.length > 0).length} sections`);
     }
 
-    // Save validation log and corrected sections to database
-    const updateData: Record<string, unknown> = {
-      validation_log: validationResult.log,
-    };
+    // ── Math Validation ──
+    let validationLog: any = null;
 
-    // If corrections were applied, update generated_sections with corrected values
-    if (validationResult.log.overridden > 0) {
-      // Fetch current sections from DB (they were saved by the stream handler)
-      const { data: report } = await supabase
-        .from('reports')
-        .select('generated_sections')
-        .eq('id', reportId)
-        .single();
+    if (!SERVER_DEV_FLAGS.skipValidation) {
+      const validationSections = fullParsed.map(s => ({
+        id: s.id,
+        calculations: s.calculations,
+        metrics: s.metrics,
+      }));
 
-      if (report?.generated_sections) {
-        const currentSections = report.generated_sections as Array<Record<string, unknown>>;
+      const validationResult: ValidatorResult = validateReport(validationSections, registry);
+      applyCorrections(validationSections, validationResult.log.details);
 
-        // Apply corrections to the saved sections
-        for (const [sectionId, corrections] of validationResult.corrections) {
-          const section = currentSections.find(s => (s as any).id === sectionId);
-          if (!section) continue;
-
-          // Update calculations with corrected values
-          const calcs = (((section as any).calculations || []) as Array<{
-            metric_name: string;
-            ai_result: number;
-            inputs: Record<string, number>;
-          }>);
-          for (const correction of corrections) {
-            const calc = calcs.find(c => c.metric_name === correction.metric_name);
-            if (calc) {
-              calc.ai_result = correction.corrected_value;
-            }
+      // Merge corrections back into fullParsed
+      for (const [sectionId, corrections] of validationResult.corrections) {
+        const section = fullParsed.find(s => s.id === sectionId);
+        if (!section) continue;
+        const calcs = (section.calculations || []) as Array<{
+          metric_name: string;
+          ai_result: number;
+          inputs: Record<string, number>;
+        }>;
+        for (const correction of corrections) {
+          const calc = calcs.find(c => c.metric_name === correction.metric_name);
+          if (calc) {
+            calc.ai_result = correction.corrected_value;
           }
         }
-
-        updateData.generated_sections = currentSections;
       }
+
+      validationLog = validationResult.log;
+
+      if (SERVER_DEV_FLAGS.logValidation) {
+        console.log('[CORE] Validation complete:', {
+          total: validationResult.log.total_calculations,
+          passed: validationResult.log.passed,
+          overridden: validationResult.log.overridden,
+          materialOverrides: validationResult.log.material_overrides,
+          sectionsToRegen: validationResult.sectionsToRegenerate,
+        });
+      }
+
+      if (validationResult.sectionsToRegenerate.length > 0) {
+        console.warn(
+          `[CORE] Material overrides detected in sections: ${validationResult.sectionsToRegenerate.join(', ')}. ` +
+          `Consider re-generating these sections with corrected values.`
+        );
+      }
+    }
+
+    // ── Save updated sections + validation log to DB ──
+    const updateData: Record<string, unknown> = {
+      generated_sections: fullParsed,
+    };
+    if (validationLog) {
+      updateData.validation_log = validationLog;
     }
 
     await supabase
@@ -787,33 +890,17 @@ async function runPostGenerationValidation(
       .update(updateData)
       .eq('id', reportId);
 
-    // Log material overrides that may need section re-generation
-    if (validationResult.sectionsToRegenerate.length > 0) {
-      console.warn(
-        `[CORE] Material overrides detected in sections: ${validationResult.sectionsToRegenerate.join(', ')}. ` +
-        `Consider re-generating these sections with corrected values.`
-      );
-    }
-
   } catch (err) {
-    console.error('[CORE] Validation pipeline error:', err);
-    // Validation failure should never block report delivery
-    // Log the error but don't throw
+    console.error('[CORE] Post-generation processing error:', err);
+    // Post-processing failure should never block report delivery
   }
 }
 
 /**
- * Simplified parser for validation — extracts sections with calculations.
- * Doesn't need the full parseGeneratedJSON robustness since we're just
- * looking for calculations arrays.
+ * Full section parser for post-generation processing.
+ * Returns complete GeneratedSection objects (not just validation fields).
  */
-function parseGeneratedJSONForValidation(
-  text: string
-): Array<{
-  id: string;
-  calculations?: Array<{ metric_name: string; inputs: Record<string, number>; formula: string; ai_result: number }>;
-  metrics: Array<{ label: string; value: string; change?: string }>;
-}> | null {
+function parseGeneratedJSONFull(text: string): GeneratedSection[] | null {
   try {
     let jsonStr = text.trim();
     const fenceMatch = jsonStr.match(/```(?:json)?\s*\n?([\s\S]+?)```/);
@@ -823,12 +910,49 @@ function parseGeneratedJSONForValidation(
 
     const parsed = JSON.parse(jsonStr);
     if (parsed.sections && Array.isArray(parsed.sections)) {
-      return parsed.sections;
+      return parsed.sections.map((s: any) => {
+        const cd = s?.chart_data ?? null;
+        let chart_data: GeneratedSection['chart_data'] = null;
+        if (cd && typeof cd === 'object' && validateChartData(cd)) {
+          chart_data = {
+            chart_type: cd.chart_type as ChartType,
+            title: typeof cd.title === 'string' ? cd.title : undefined,
+            subtitle: typeof cd.subtitle === 'string' ? cd.subtitle : undefined,
+            data: cd.data,
+          };
+        }
+
+        return {
+          id: s.id,
+          title: s.title,
+          content: s.content ?? '',
+          chart_html: typeof s.chart_html === 'string' ? s.chart_html : '',
+          chart_data,
+          metrics: Array.isArray(s.metrics) ? s.metrics : [],
+          calculations: Array.isArray(s.calculations) ? s.calculations : [],
+          included: s.included !== false,
+          skipReason: s.skipReason ?? null,
+        };
+      });
     }
   } catch {
     // Can't parse — return null
   }
   return null;
+}
+
+/**
+ * Simplified parser for validation — extracts sections with calculations.
+ * KEPT for backward compat but parseGeneratedJSONFull is now preferred.
+ */
+function parseGeneratedJSONForValidation(
+  text: string
+): Array<{
+  id: string;
+  calculations?: Array<{ metric_name: string; inputs: Record<string, number>; formula: string; ai_result: number }>;
+  metrics: Array<{ label: string; value: string; change?: string }>;
+}> | null {
+  return parseGeneratedJSONFull(text);
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -1045,7 +1169,8 @@ Return ONLY a JSON object (no markdown fences):
   "id": "${params.sectionId}",
   "title": "${sectionDef.title}",
   "content": "...",
-  "chart_data": { "chart_type": "vertical_bar", "title": "Optional", "data": {} },
+  "chart_html": "",
+  "chart_data": null,
   "metrics": [...],
   "included": true,
   "skipReason": null
@@ -1053,6 +1178,14 @@ Return ONLY a JSON object (no markdown fences):
   );
 
   const regenerated = parseRegeneratedSection(result, currentSection);
+
+  // Phase 5: Fill chart template if chart_data is present
+  if (regenerated.chart_data && !regenerated.chart_html) {
+    const brandColors = settings ? resolveBrandColors(settings) : undefined;
+    if (brandColors) {
+      fillSectionChartTemplates([regenerated], brandColors);
+    }
+  }
 
   const updatedSections = currentSections.map((s) => (s.id === params.sectionId ? regenerated : s));
   await supabase.from('reports').update({ generated_sections: updatedSections }).eq('id', params.reportId);

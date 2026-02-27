@@ -2,9 +2,13 @@
 
 /**
  * PHASE 1 — Master System Prompt Architecture
+ * PHASE 5 — Chart Data Migration (Option 2)
  *
- * Implements the five-layer architecture from the Master Architecture Document.
- * Layer 1 (Prompt) is defined entirely in this file.
+ * Phase 5 changes:
+ * - buildChartAccessBlock() now includes strict JSON schemas for chart_data
+ * - Output schema tells Claude to set chart_html to "" and populate chart_data
+ * - Tier config blocks updated to reference chart_data
+ * - Backend fills chart_html from chart_data using chart-template-filler.ts
  *
  * ┌──────────────────────────────────────────────────────────────┐
  * │  SYSTEM PROMPT STRUCTURE                                     │
@@ -16,26 +20,23 @@
  * │    4. <financial_terminology>                                │
  * │    5. <analytical_framework>                                 │
  * │    6. <data_integrity_rules>                                 │
- * │    7. <math_validation_rules>         ← NEW Phase 1          │
- * │    8. <output_schema>                 ← UPDATED Phase 1      │
+ * │    7. <math_validation_rules>         ← Phase 1              │
+ * │    8. <output_schema>                 ← UPDATED Phase 5      │
  * │                                                              │
  * │  PER-REQUEST BLOCKS (9–15) — change per report               │
- * │    9.  <user_preferences>             ← NEW Phase 1          │
+ * │    9.  <user_preferences>                                    │
  * │   10.  <property_context>                                    │
  * │   11.  <brand_colors>                                        │
  * │   12.  <historical_data>                                     │
- * │   13.  <budget_context>               ← NEW Phase 1          │
+ * │   13.  <budget_context>                                      │
  * │   14.  <sections_to_generate>                                │
- * │   15.  <tier_config>                                         │
+ * │   15.  <tier_config>                  ← UPDATED Phase 5      │
  * │                                                              │
  * │  + Section guidance definitions (cached)                     │
  * │  + Visualization templates (cached)                          │
  * │  + Section length rules (per-request)                        │
- * │  + Chart access rules (per-request)                          │
+ * │  + Chart data schemas (per-request)   ← NEW Phase 5          │
  * └──────────────────────────────────────────────────────────────┘
- *
- * Backward-compatible: buildSystemPrompt and buildAnalysisPrompt
- * are still exported for the legacy single-call pipeline.
  */
 
 import { SectionDefinition } from './section-definitions';
@@ -89,16 +90,243 @@ export function buildUserPreferencesBlock(prefs: {
 }
 
 // ═══════════════════════════════════════════════════════════
-// CHART ACCESS RULES (PER-REQUEST)
+// CHART DATA SCHEMAS — Phase 5
+// Claude outputs chart_data JSON matching these exact schemas.
+// The backend fills chart_html from chart_data using template filler.
 // ═══════════════════════════════════════════════════════════
 
 export function buildChartAccessBlock(sectionIds: string[], tier: string): string {
-  return `
-<chart_output_rules>
-Generate all charts as inline HTML in the "chart_html" field using the visualization templates.
-Set "chart_data" to null for all sections.
-Do NOT output chart_data JSON — the backend is not yet configured to render it.
-All visual charts must be complete, self-contained HTML with inline styles in chart_html.
+  // Foundational tier: no charts at all
+  if (tier === 'foundational') {
+    return `<chart_output_rules>
+This is a Foundational tier report. Do NOT generate any charts.
+Set "chart_html" to "" (empty string) and "chart_data" to null for all sections.
+Only populate the "metrics" array for KPI cards.
+</chart_output_rules>`;
+  }
+
+  // Professional and Institutional tiers: output chart_data JSON
+  return `<chart_output_rules>
+IMPORTANT — PHASE 5 CHART DATA MIGRATION:
+
+You do NOT generate chart HTML. Instead, output structured JSON in the "chart_data" field.
+The backend renders charts from chart_data using pre-built templates.
+
+For EVERY section that has a chart assignment below, you MUST:
+1. Set "chart_html" to "" (empty string) — the backend fills this from chart_data
+2. Set "chart_data" to a JSON object matching the EXACT schema for that chart type
+3. Use the EXACT field names shown — do NOT rename fields or add extra fields
+
+For sections with NO chart assignment, set both "chart_html" to "" and "chart_data" to null.
+
+EXCEPTION — report_header:
+The executive_summary section's chart_data uses the "report_header" schema.
+This generates the institutional header bar with KPIs.
+
+═══════════════════════════════════════════
+CHART DATA SCHEMAS (use EXACTLY as shown):
+═══════════════════════════════════════════
+
+SCHEMA: report_header (for executive_summary only)
+{
+  "chart_type": "report_header",
+  "data": {
+    "property_name": "string — property name",
+    "units": number|null,
+    "period": "string — e.g. 'November 2025'",
+    "location": "string|null — e.g. 'San Antonio, TX'",
+    "asset_class": "string|null — e.g. 'Class B Multifamily'",
+    "company_name": "string|null — from settings",
+    "logo_url": "string|null — from settings",
+    "kpis": [
+      {
+        "label": "string — e.g. 'NOI'",
+        "value": "string — formatted, e.g. '$113,848'",
+        "change": "string — e.g. '+25.8% MoM' or '–90 bps MoM'",
+        "favorable": true|false
+      }
+    ]
+  }
+}
+The kpis array should have exactly 5 items: NOI, Revenue, Expenses, NOI Margin, Occupancy.
+
+SCHEMA: budget_variance_table
+{
+  "chart_type": "budget_variance_table",
+  "title": "string — e.g. 'Budget vs. Actual — Operating Expenses'",
+  "subtitle": "string — e.g. 'November 2025 · Favorable variance in green'",
+  "data": {
+    "rows": [
+      {
+        "category": "string — e.g. 'Property Taxes'",
+        "actual": number — integer dollars,
+        "budget": number — integer dollars,
+        "is_expense": true|false — true for expense tables (under-budget = favorable)
+      }
+    ],
+    "totals": {
+      "label": "string — e.g. 'Total OpEx'",
+      "actual": number,
+      "budget": number,
+      "is_expense": true|false
+    }
+  }
+}
+
+SCHEMA: revenue_waterfall
+{
+  "chart_type": "revenue_waterfall",
+  "title": "string — e.g. 'P&L Waterfall — Revenue to NOI'",
+  "subtitle": "string — e.g. 'November 2025'",
+  "data": {
+    "bars": [
+      {
+        "label": "string — e.g. 'Revenue'",
+        "value": number — positive for totals/additions, negative for deductions,
+        "type": "total|deduction|addition|result"
+      }
+    ]
+  }
+}
+First bar should be type "total" (Revenue). Last bar should be type "result" (NOI).
+Middle bars are "deduction" (expenses, vacancy) or "addition" (other income).
+
+SCHEMA: expense_horizontal_bars
+{
+  "chart_type": "expense_horizontal_bars",
+  "title": "string — e.g. 'Expense Breakdown by Category'",
+  "subtitle": "string — e.g. 'Actual vs. Budget · November 2025'",
+  "data": {
+    "categories": [
+      {
+        "label": "string — e.g. 'Property Taxes'",
+        "actual": number — integer dollars,
+        "budget": number|null — integer dollars, null if no budget
+      }
+    ]
+  }
+}
+
+SCHEMA: occupancy_gauge
+{
+  "chart_type": "occupancy_gauge",
+  "data": {
+    "physical": { "value": number — e.g. 91.4, "change_bps": number|null — e.g. -90 },
+    "economic": { "value": number — e.g. 80.0, "change_bps": number|null } | null
+  }
+}
+Set economic to null if economic occupancy data is not available.
+
+SCHEMA: noi_trend_bars
+{
+  "chart_type": "noi_trend_bars",
+  "title": "string — e.g. 'NOI — Trailing 6 Months'",
+  "data": {
+    "months": [
+      {
+        "label": "string — e.g. 'Jun'",
+        "noi": number — integer dollars,
+        "beat_budget": true|false|null — null if no budget data
+      }
+    ]
+  }
+}
+Include 3-6 trailing months from the T-12 data. Current month last.
+
+SCHEMA: rent_roll_table
+{
+  "chart_type": "rent_roll_table",
+  "title": "string — e.g. 'Unit Mix Summary'",
+  "subtitle": "string — e.g. 'By floorplan'",
+  "data": {
+    "rows": [
+      {
+        "floorplan": "string — e.g. '1BR / 1BA'",
+        "units": number,
+        "avg_rent": number|null,
+        "avg_sqft": number|null,
+        "rent_per_sqft": number|null,
+        "occupancy_pct": number|null
+      }
+    ],
+    "totals": {
+      "units": number,
+      "avg_rent": number|null,
+      "avg_sqft": number|null,
+      "rent_per_sqft": number|null,
+      "occupancy_pct": number|null
+    }
+  }
+}
+
+SCHEMA: risk_cards
+{
+  "chart_type": "risk_cards",
+  "data": {
+    "items": [
+      {
+        "title": "string — e.g. 'Rising Vacancy Loss'",
+        "severity": "high|medium|low",
+        "description": "string — 1-2 sentences explaining the risk"
+      }
+    ]
+  }
+}
+Generate 2-4 risk items based on data anomalies, trends, and budget misses.
+
+SCHEMA: move_in_out_bars
+{
+  "chart_type": "move_in_out_bars",
+  "title": "string — e.g. 'Leasing Activity'",
+  "data": {
+    "move_ins": number,
+    "move_outs": number,
+    "renewals": number|null,
+    "notices_to_vacate": number|null,
+    "avg_new_lease": number|null — monthly rent,
+    "avg_renewal": number|null — monthly rent
+  }
+}
+
+SCHEMA: comparison_table
+{
+  "chart_type": "comparison_table",
+  "title": "string",
+  "subtitle": "string",
+  "data": {
+    "headers": ["string", "string", ...],
+    "rows": [
+      {
+        "values": ["string|number", ...] — one value per header,
+        "is_total": true|false — optional, bold + top border,
+        "highlight": true|false — optional
+      }
+    ]
+  }
+}
+
+═══════════════════════════════════════
+SECTION → CHART TYPE ASSIGNMENTS:
+═══════════════════════════════════════
+executive_summary → report_header
+revenue_summary → budget_variance_table
+expense_summary → budget_variance_table
+revenue_analysis → revenue_waterfall
+expense_analysis → expense_horizontal_bars
+occupancy_leasing → occupancy_gauge AND move_in_out_bars (output the gauge as chart_data, move_in_out as a second chart — use occupancy_gauge for chart_data)
+noi_performance → noi_trend_bars
+rent_roll_insights → rent_roll_table
+rent_roll_deep_dive → rent_roll_table
+risk_watch_items → risk_cards
+risk_matrix → risk_cards
+budget_vs_actual → budget_variance_table
+market_positioning → comparison_table
+market_submarket_analysis → comparison_table
+lease_expiration_rollover → comparison_table
+resident_operational_metrics → comparison_table
+All other sections → no chart (chart_data: null)
+
+If a section has NO data for its assigned chart, set chart_data to null.
 </chart_output_rules>`;
 }
 
@@ -208,7 +436,7 @@ ASSET MANAGER OUTLOOK:
   reports. Convert correctly. 91.4% occupancy = 8.6% vacancy.
 </data_integrity_rules>`;
 
-  // ── Block 7: <math_validation_rules> ── NEW Phase 1
+  // ── Block 7: <math_validation_rules> ──
   const block7 = `<math_validation_rules>
 Every derived metric in your report MUST include a calculations entry.
 For each calculation, provide:
@@ -233,7 +461,7 @@ Rules:
   verified at extraction, not generation).
 </math_validation_rules>`;
 
-  // ── Block 8: <output_schema> ── UPDATED Phase 1
+  // ── Block 8: <output_schema> ── UPDATED Phase 5
   const block8 = `<output_schema>
 Return a single JSON object with this structure:
 {
@@ -249,11 +477,11 @@ Return a single JSON object with this structure:
       "id": "section_id",
       "title": "Section Title",
       "content": "Narrative text (plain text with <strong> for emphasis and <br/> for line breaks). No HTML charts, no styled divs.",
-      "chart_html": "Full HTML chart from templates. Empty string if no chart. This field is rendered read-only below the narrative.",
+      "chart_html": "",
       "chart_data": {
-        "chart_type": "waterfall | horizontal_bars | trend_line | gauge | risk_cards | heatmap | stacked_bars",
-        "title": "Chart Title",
-        "data": [ ]
+        "chart_type": "report_header | budget_variance_table | revenue_waterfall | expense_horizontal_bars | occupancy_gauge | noi_trend_bars | rent_roll_table | risk_cards | move_in_out_bars | comparison_table",
+        "title": "Chart Title (if applicable)",
+        "data": { }
       },
       "metrics": [
         {
@@ -281,11 +509,11 @@ Return a single JSON object with this structure:
 CRITICAL FIELD SEPARATION:
 - "content" = NARRATIVE TEXT ONLY. No <div>, <table>, <svg>, or styled HTML.
   Allowed tags: <strong>, <em>, <br/>, <p>. Nothing else.
-- "chart_html" = ALL visual HTML (charts, tables, visualizations from templates).
-  If no chart template assigned, set to "" (empty string).
-  Chart HTML renders in a read-only panel below the narrative.
-- "chart_data" = Structured JSON describing the chart. Used for backend validation
-  and future deterministic rendering. Set to null if no chart for this section.
+- "chart_html" = ALWAYS set to "" (empty string). The backend fills this
+  from chart_data using pre-built templates. Do NOT generate chart HTML.
+- "chart_data" = Structured JSON matching the chart type schema from
+  <chart_output_rules>. The backend uses this to render the chart.
+  Set to null if the section has no chart assignment.
 - "metrics" = KPI data for the compact metric strip rendered by the viewer.
   Do NOT generate kpi_strip HTML — the viewer handles metric cards automatically.
 - "calculations" = Every derived metric must have an entry here for math validation.
@@ -433,6 +661,7 @@ Refer to section_guidance id="${section.id}" in the system prompt for analysis i
 /**
  * Block 15: <tier_config>
  * Appended last. Controls depth, section count, and chart access.
+ * UPDATED Phase 5: references chart_data instead of chart_html.
  */
 function buildTierConfigBlock(tier: string): string {
   if (tier === 'foundational') {
@@ -451,11 +680,11 @@ Do not generate chart_data. Set chart_data to null.
     return `<tier_config>
 <tier>professional</tier>
 <instructions>
-Polished 10-section report with inline HTML charts using the templates provided.
-Balance narrative with visual data presentation. 3–6 paragraphs per section.
-Charts go in the "chart_html" field, NOT in "content".
-After describing the data trend in "content", the chart visual appears separately below.
-Also populate "chart_data" with structured JSON matching the chart_type schemas.
+Polished 10-section report. 3–6 paragraphs per section.
+Balance narrative with visual data presentation.
+Charts: output structured JSON in "chart_data" matching the schemas in <chart_output_rules>.
+Set "chart_html" to "" (empty string) — the backend renders charts from chart_data.
+Do NOT generate any HTML for charts. Only output the data as JSON.
 Every derived metric must have a "calculations" entry for math validation.
 </instructions>
 </tier_config>`;
@@ -468,7 +697,9 @@ Every derived metric must have a "calculations" entry for math validation.
 Comprehensive institutional-grade report with up to 15 sections and premium visualizations.
 Think CBRE/JLL investor memo quality. Dense with data, every word earns its place.
 4–8 paragraphs per section. Multiple chart types per section where appropriate.
-Charts go in the "chart_html" field. Also populate "chart_data" with structured JSON.
+Charts: output structured JSON in "chart_data" matching the schemas in <chart_output_rules>.
+Set "chart_html" to "" (empty string) — the backend renders charts from chart_data.
+Do NOT generate any HTML for charts. Only output the data as JSON.
 Every derived metric must have a "calculations" entry for math validation.
 Cross-reference data between sections for coherent narrative arc.
 </instructions>
@@ -691,7 +922,7 @@ ${s.promptGuidance}
 </section_guidance>`
   ).join('\n\n');
 
-  // ── Visualization templates (cached) ──
+  // ── Visualization templates (cached — kept for reference/context) ──
   const vizTemplates = buildVisualizationTemplatesBlock();
 
   // ── Section length + chart access rules (per-request, tier-specific) ──
@@ -703,10 +934,9 @@ ${s.promptGuidance}
   let reportHeaderBlock = '';
   if (params.companyName || params.logoUrl) {
     reportHeaderBlock = `<report_header>
-Include a report header in the FIRST section's chart_html (executive_summary).
-${params.logoUrl ? `Logo URL: ${params.logoUrl}` : 'No logo provided — omit the img tag.'}
-Company name: ${params.companyName || 'Omit company name header'}
-Use the report_header template structure from the visualization templates.
+The executive_summary section's chart_data should use the "report_header" schema.
+${params.logoUrl ? `Logo URL: ${params.logoUrl}` : 'No logo provided — set logo_url to null.'}
+Company name: ${params.companyName || 'Set company_name to null'}
 </report_header>`;
   }
 
@@ -717,8 +947,7 @@ Use the report_header template structure from the visualization templates.
 <rule>If a number seems inconsistent, flag it in the narrative.</rule>
 <rule>Never fabricate data. Missing data = "included": false with skipReason.</rule>
 <rule>Use RE terminology naturally: NOI, GPR, EGI, NER, loss-to-lease, etc.</rule>
-<rule>Chart HTML must use inline styles only — no external CSS, no JavaScript.</rule>
-<rule>Replace {{PRIMARY}}, {{SECONDARY}}, {{ACCENT}}, {{GREEN}}, {{RED}}, {{AMBER}} with values from <brand_colors>.</rule>
+<rule>Set chart_html to "" (empty string) for ALL sections. The backend fills this from chart_data.</rule>
 <rule>Every derived metric referenced in narrative MUST have a matching entry in "calculations".</rule>
 </critical_rules>`;
 
@@ -761,9 +990,6 @@ export function buildNarrativeUserPrompt(params: {
   let prompt = `Generate the investor report for ${monthName} ${params.selectedYear}.\n\n`;
 
   // ── Brand colors (kept in user prompt for backward compat if provided) ──
-  // NOTE: Phase 1 also puts brand_colors in system prompt Block 11.
-  // If brandColors is passed here, include it. This supports both
-  // old callers (brandColors in user prompt) and new callers (in system prompt).
   if (params.brandColors) {
     prompt += `<brand_colors>
 PRIMARY=${params.brandColors.primary}
@@ -820,7 +1046,7 @@ ${skippedSections.map(s => `- ${s.id}: "${s.title}"`).join('\n')}
   // ── Final instructions ──
   prompt += `<final_instructions>
 <instruction>Use the data from <extracted_data> — do not re-read original documents.</instruction>
-<instruction>Replace all {{COLOR}} tokens in chart HTML with values from <brand_colors>.</instruction>
+<instruction>Set chart_html to "" (empty string) for ALL sections. Output chart data as JSON in chart_data.</instruction>
 <instruction>Return a SINGLE JSON with ALL ${params.sections.length} sections (${activeSections.length} active + ${skippedSections.length} skipped).</instruction>
 <instruction>STOP AT NOI. No debt service, capex, or distributions unless the asset manager mentioned them.</instruction>
 <instruction>The "sections" array MUST match the EXACT order from <sections_to_generate>.</instruction>
@@ -861,7 +1087,7 @@ Respond with ONLY a JSON object. No markdown fences, no preamble.
   "id": "${params.sectionId}",
   "title": "${params.sectionTitle}",
   "content": "Narrative text only — no HTML charts.",
-  "chart_html": "HTML chart visualizations (empty string if none).",
+  "chart_html": "",
   "chart_data": null,
   "metrics": [...],
   "calculations": [...],

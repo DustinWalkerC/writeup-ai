@@ -22,6 +22,7 @@ import {
   downloadEmailHTML,
 } from '@/lib/export-utils'
 import { renderChart, ChartData } from '@/lib/chart-renderer'
+import { fillChartTemplate, type ChartTemplateData } from '@/lib/chart-template-filler'
 
 // ── Month name → number mapping ──
 const MONTH_NUMBERS: Record<string, number> = {
@@ -40,6 +41,21 @@ const MONTH_NUMBERS: Record<string, number> = {
 }
 function monthNameToNumber(name: string): number {
   return MONTH_NUMBERS[name.toLowerCase()] || 1
+}
+
+// ── Phase 5: Chart rendering helper ──
+// Tries fillChartTemplate first (handles Phase 5 chart types like report_header,
+// budget_variance_table, etc.), falls back to legacy renderChart for old types.
+function renderChartSafe(
+  chartData: any,
+  colors?: { primary?: string; secondary?: string; accent?: string }
+): string {
+  if (!chartData) return ''
+  // Phase 5 filler (knows all standard.ts template types)
+  const filled = fillChartTemplate(chartData as ChartTemplateData, colors)
+  if (filled) return filled
+  // Legacy fallback (old chart_type names like 'waterfall', 'gauge')
+  return renderChart(chartData as ChartData)
 }
 
 // ── Types ──
@@ -207,15 +223,16 @@ function renderFormattedSections(
     metrics?: GeneratedSection['metrics']
   }>,
   accentColor: string,
-  disclaimer?: string | null
+  disclaimer?: string | null,
+  brandColors?: { primary?: string; secondary?: string; accent?: string }
 ): string {
   const activeSections = orderedSections.filter((s) => s.content)
   const sectionsHTML = activeSections
     .map((section, idx) => {
       const { narrative, chartHTML } = getDisplayContent(section)
 
-      // ✅ Fix 3: chart_html first, chart_data fallback
-      const finalChartHTML = chartHTML || (section.chart_data ? renderChart(section.chart_data as ChartData) : '')
+      // ✅ Fix 3: chart_html first, chart_data fallback (now via renderChartSafe)
+      const finalChartHTML = chartHTML || (section.chart_data ? renderChartSafe(section.chart_data, brandColors) : '')
 
       let html = `<div data-section="${section.id}" style="margin-bottom:36px;">`
       if (finalChartHTML && idx === 0)
@@ -276,6 +293,14 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
 
   const exportRef = useRef<HTMLDivElement>(null)
   const accentColor = userSettings?.accent_color || '#27272A'
+  const chartBrandColors = useMemo(
+    () => ({
+      primary: userSettings?.accent_color || '#27272A',
+      secondary: userSettings?.secondary_color || '#EFF6FF',
+      accent: (userSettings as any)?.report_accent_color || userSettings?.accent_color || '#2563EB',
+    }),
+    [userSettings]
+  )
   const hasGeneratedSections =
     report.generated_sections && Array.isArray(report.generated_sections) && report.generated_sections.length > 0
 
@@ -623,9 +648,9 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
 
   const exportHTML = useMemo(() => {
     if (hasGeneratedSections)
-      return renderFormattedSections(orderedSections.filter((s) => s.content), accentColor, userSettings?.custom_disclaimer)
+      return renderFormattedSections(orderedSections.filter((s) => s.content), accentColor, userSettings?.custom_disclaimer, chartBrandColors)
     return null
-  }, [orderedSections, accentColor, userSettings?.custom_disclaimer, hasGeneratedSections])
+  }, [orderedSections, accentColor, userSettings?.custom_disclaimer, hasGeneratedSections, chartBrandColors])
 
   // ── Render ──
 
@@ -753,7 +778,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                             </div>
                           ) : section.chart_data ? (
                             <div data-chart="header" style={{ marginBottom: '24px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
-                              <div dangerouslySetInnerHTML={{ __html: renderChart(section.chart_data as ChartData) }} />
+                              <div dangerouslySetInnerHTML={{ __html: renderChartSafe(section.chart_data, chartBrandColors) }} />
                             </div>
                           ) : null
                         ) : null}
@@ -793,7 +818,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                             </div>
                           ) : section.chart_data ? (
                             <div data-chart={section.id} style={{ marginTop: '20px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
-                              <div dangerouslySetInnerHTML={{ __html: renderChart(section.chart_data as ChartData) }} />
+                              <div dangerouslySetInnerHTML={{ __html: renderChartSafe(section.chart_data, chartBrandColors) }} />
                             </div>
                           ) : null
                         ) : null}
@@ -952,7 +977,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                                 {section.chart_html ? (
                                   <div dangerouslySetInnerHTML={{ __html: section.chart_html }} />
                                 ) : section.chart_data ? (
-                                  <div dangerouslySetInnerHTML={{ __html: renderChart(section.chart_data as ChartData) }} />
+                                  <div dangerouslySetInnerHTML={{ __html: renderChartSafe(section.chart_data, chartBrandColors) }} />
                                 ) : null}
                               </div>
                             </div>
