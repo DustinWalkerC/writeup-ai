@@ -8,6 +8,10 @@
  *
  * Token savings: ~85-90% per chart (1500 tokens -> 150 tokens for waterfall)
  *
+ * NOTE: This renderer is currently in STANDBY mode. It will be activated
+ * once Phase 5 (prompt + generator changes) is complete. Until then,
+ * report-viewer.tsx should prefer chart_html over chart_data.
+ *
  * Supported chart types:
  *   - waterfall         NOI bridge, variance analysis
  *   - horizontal_bar    Category comparisons, budget vs actual
@@ -132,6 +136,7 @@ const FONT_BODY = '"DM Sans", system-ui, sans-serif';
 // ═══════════════════════════════════════════════════════════
 
 function fmt(n: number, format?: string): string {
+  if (typeof n !== 'number' || isNaN(n)) return '-';
   if (format === 'percent') return `${n >= 0 ? '+' : ''}${n.toFixed(1)}%`;
   if (format === 'number') return n.toLocaleString('en-US', { maximumFractionDigits: 0 });
   // Default: currency
@@ -143,12 +148,14 @@ function fmt(n: number, format?: string): string {
 }
 
 function fmtFull(n: number): string {
+  if (typeof n !== 'number' || isNaN(n)) return '-';
   const abs = Math.abs(n);
   const formatted = `$${abs.toLocaleString('en-US', { maximumFractionDigits: 0 })}`;
   return n < 0 ? `(${formatted})` : formatted;
 }
 
 function varColor(n: number): string {
+  if (typeof n !== 'number' || isNaN(n)) return C.textMid;
   if (n > 0) return C.green;
   if (n < 0) return C.red;
   return C.textMid;
@@ -166,19 +173,31 @@ function chartWrapper(title: string | undefined, inner: string): string {
 // ═══════════════════════════════════════════════════════════
 
 export function renderChart(chartData: ChartData): string {
-  switch (chartData.chart_type) {
-    case 'waterfall':
-      return renderWaterfall(chartData);
-    case 'horizontal_bar':
-      return renderHorizontalBar(chartData);
-    case 'vertical_bar':
-      return renderVerticalBar(chartData);
-    case 'comparison_table':
-      return renderComparisonTable(chartData);
-    case 'metric_cards':
-      return renderMetricCards(chartData);
-    default:
-      return `<div style="padding:16px;color:${C.textSoft};font-size:13px">Chart type not supported</div>`;
+  // Top-level null safety — gracefully return empty for any malformed input
+  if (!chartData) return '';
+  if (typeof chartData !== 'object') return '';
+  if (!chartData.chart_type) return '';
+  if (!chartData.data || typeof chartData.data !== 'object') return '';
+
+  try {
+    switch (chartData.chart_type) {
+      case 'waterfall':
+        return renderWaterfall(chartData);
+      case 'horizontal_bar':
+        return renderHorizontalBar(chartData);
+      case 'vertical_bar':
+        return renderVerticalBar(chartData);
+      case 'comparison_table':
+        return renderComparisonTable(chartData);
+      case 'metric_cards':
+        return renderMetricCards(chartData);
+      default:
+        return '';
+    }
+  } catch (err) {
+    // If any renderer throws, return empty string instead of crashing
+    console.error('Chart renderer error:', err);
+    return '';
   }
 }
 
@@ -187,17 +206,19 @@ export function renderChart(chartData: ChartData): string {
 // ═══════════════════════════════════════════════════════════
 
 function renderWaterfall(chart: WaterfallData): string {
-  const { components } = chart.data;
-  if (!components.length) return '';
+  const { components } = chart.data || {};
+  if (!components || !Array.isArray(components) || !components.length) return '';
 
-  const maxVal = Math.max(...components.map(c => Math.abs(c.value)));
+  const maxVal = Math.max(...components.map(c => Math.abs(c.value || 0)));
   const barMax = 180; // max bar width px
 
   const rows = components.map(comp => {
-    const barW = maxVal > 0 ? Math.max(4, Math.round((Math.abs(comp.value) / maxVal) * barMax)) : 4;
+    if (!comp || !comp.label) return '';
+    const val = comp.value || 0;
+    const barW = maxVal > 0 ? Math.max(4, Math.round((Math.abs(val) / maxVal) * barMax)) : 4;
     const isEndpoint = comp.type === 'start' || comp.type === 'end' || comp.type === 'subtotal';
-    const barColor = isEndpoint ? C.accent : comp.value >= 0 ? C.green : C.red;
-    const valueColor = isEndpoint ? C.accent : comp.value >= 0 ? C.green : C.red;
+    const barColor = isEndpoint ? C.accent : val >= 0 ? C.green : C.red;
+    const valueColor = isEndpoint ? C.accent : val >= 0 ? C.green : C.red;
     const labelWeight = isEndpoint ? '600' : '400';
 
     return `
@@ -206,7 +227,7 @@ function renderWaterfall(chart: WaterfallData): string {
         <div style="flex:1;display:flex;align-items:center">
           <div style="height:22px;width:${barW}px;background:${barColor};border-radius:4px;transition:width 0.3s"></div>
         </div>
-        <div style="width:80px;text-align:right;font-size:12px;font-weight:600;color:${valueColor};font-family:${FONT_DISPLAY}">${fmtFull(comp.value)}</div>
+        <div style="width:80px;text-align:right;font-size:12px;font-weight:600;color:${valueColor};font-family:${FONT_DISPLAY}">${fmtFull(val)}</div>
       </div>`;
   }).join('');
 
@@ -218,10 +239,10 @@ function renderWaterfall(chart: WaterfallData): string {
 // ═══════════════════════════════════════════════════════════
 
 function renderHorizontalBar(chart: HorizontalBarData): string {
-  const { categories, format } = chart.data;
-  if (!categories.length) return '';
+  const { categories, format } = chart.data || {};
+  if (!categories || !Array.isArray(categories) || !categories.length) return '';
 
-  const maxVal = Math.max(...categories.map(c => Math.max(c.actual, c.budget || 0)));
+  const maxVal = Math.max(...categories.map(c => Math.max(c.actual || 0, c.budget || 0)));
   const barMax = 160;
   const hasBudget = categories.some(c => c.budget !== undefined);
 
@@ -237,7 +258,9 @@ function renderHorizontalBar(chart: HorizontalBarData): string {
   header += `</div>`;
 
   const rows = categories.map(cat => {
-    const barW = maxVal > 0 ? Math.max(4, Math.round((cat.actual / maxVal) * barMax)) : 4;
+    if (!cat || !cat.label) return '';
+    const actual = cat.actual || 0;
+    const barW = maxVal > 0 ? Math.max(4, Math.round((actual / maxVal) * barMax)) : 4;
     const budgetBarW = cat.budget && maxVal > 0 ? Math.max(2, Math.round((cat.budget / maxVal) * barMax)) : 0;
     const varPct = cat.variance_pct;
     const vColor = varPct !== undefined ? varColor(varPct) : C.textMid;
@@ -250,7 +273,7 @@ function renderHorizontalBar(chart: HorizontalBarData): string {
     }
     row += `<div style="position:absolute;top:2px;left:0;height:16px;width:${barW}px;background:${C.accent};border-radius:4px;opacity:0.85"></div>`;
     row += `</div>`;
-    row += `<div style="width:70px;text-align:right;font-size:12px;font-weight:500;color:${C.text}">${fmt(cat.actual, format)}</div>`;
+    row += `<div style="width:70px;text-align:right;font-size:12px;font-weight:500;color:${C.text}">${fmt(actual, format)}</div>`;
     if (hasBudget) {
       row += `<div style="width:70px;text-align:right;font-size:12px;color:${C.textSoft}">${cat.budget !== undefined ? fmt(cat.budget, format) : '-'}</div>`;
       row += `<div style="width:60px;text-align:right;font-size:12px;font-weight:600;color:${vColor}">${varPct !== undefined ? (varPct >= 0 ? '+' : '') + varPct.toFixed(1) + '%' : '-'}</div>`;
@@ -267,10 +290,10 @@ function renderHorizontalBar(chart: HorizontalBarData): string {
 // ═══════════════════════════════════════════════════════════
 
 function renderVerticalBar(chart: VerticalBarData): string {
-  const { periods, format, series_labels } = chart.data;
-  if (!periods.length) return '';
+  const { periods, format, series_labels } = chart.data || {};
+  if (!periods || !Array.isArray(periods) || !periods.length) return '';
 
-  const allVals = periods.flatMap(p => [p.value, p.comparison_value].filter((v): v is number => v !== undefined));
+  const allVals = periods.flatMap(p => [p.value, p.comparison_value].filter((v): v is number => typeof v === 'number' && !isNaN(v)));
   const maxVal = Math.max(...allVals, 1);
   const barMaxH = 120;
   const hasComparison = periods.some(p => p.comparison_value !== undefined);
@@ -287,12 +310,15 @@ function renderVerticalBar(chart: VerticalBarData): string {
   // Bars
   let bars = `<div style="display:flex;align-items:flex-end;gap:${periods.length > 6 ? 6 : 12}px;height:${barMaxH + 30}px;border-bottom:1px solid ${C.border};padding-bottom:8px">`;
   for (const period of periods) {
-    const h = Math.max(4, Math.round((period.value / maxVal) * barMaxH));
-    const compH = period.comparison_value !== undefined ? Math.max(4, Math.round((period.comparison_value / maxVal) * barMaxH)) : 0;
+    if (!period) continue;
+    const val = period.value || 0;
+    const h = Math.max(4, Math.round((val / maxVal) * barMaxH));
+    const compH = (period.comparison_value !== undefined && typeof period.comparison_value === 'number')
+      ? Math.max(4, Math.round((period.comparison_value / maxVal) * barMaxH)) : 0;
     const barWidth = hasComparison ? 20 : 32;
 
     bars += `<div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:2px">`;
-    bars += `<div style="font-size:10px;font-weight:600;color:${C.textMid};margin-bottom:2px">${fmt(period.value, format)}</div>`;
+    bars += `<div style="font-size:10px;font-weight:600;color:${C.textMid};margin-bottom:2px">${fmt(val, format)}</div>`;
     bars += `<div style="display:flex;align-items:flex-end;gap:3px">`;
     if (hasComparison && compH > 0) {
       bars += `<div style="width:${barWidth - 4}px;height:${compH}px;background:${C.borderL};border-radius:3px 3px 0 0"></div>`;
@@ -306,7 +332,8 @@ function renderVerticalBar(chart: VerticalBarData): string {
   // X-axis labels
   let labels = `<div style="display:flex;gap:${periods.length > 6 ? 6 : 12}px;margin-top:6px">`;
   for (const period of periods) {
-    labels += `<div style="flex:1;text-align:center;font-size:10px;color:${C.textSoft}">${period.label}</div>`;
+    if (!period) continue;
+    labels += `<div style="flex:1;text-align:center;font-size:10px;color:${C.textSoft}">${period.label || ''}</div>`;
   }
   labels += `</div>`;
 
@@ -318,19 +345,20 @@ function renderVerticalBar(chart: VerticalBarData): string {
 // ═══════════════════════════════════════════════════════════
 
 function renderComparisonTable(chart: ComparisonTableData): string {
-  const { headers, rows } = chart.data;
-  if (!headers.length || !rows.length) return '';
+  const { headers, rows } = chart.data || {};
+  if (!headers || !rows || !Array.isArray(headers) || !Array.isArray(rows) || !headers.length || !rows.length) return '';
 
   // Header row
   let thead = `<div style="display:flex;padding:8px 12px;background:${C.accent};border-radius:8px 8px 0 0">`;
   for (let i = 0; i < headers.length; i++) {
     const isFirst = i === 0;
-    thead += `<div style="flex:${isFirst ? 1.5 : 1};font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.04em;text-align:${isFirst ? 'left' : 'right'}">${headers[i]}</div>`;
+    thead += `<div style="flex:${isFirst ? 1.5 : 1};font-size:10px;font-weight:700;color:#fff;text-transform:uppercase;letter-spacing:0.04em;text-align:${isFirst ? 'left' : 'right'}">${headers[i] || ''}</div>`;
   }
   thead += `</div>`;
 
   // Data rows
   const tbody = rows.map((row, rowIdx) => {
+    if (!row || !row.label) return '';
     const bg = row.is_total ? C.bgAlt : row.highlight ? C.accentBg : rowIdx % 2 === 0 ? C.bg : C.bgWarm;
     const weight = row.is_total ? '700' : '400';
     const topBorder = row.is_total ? `border-top:2px solid ${C.border};` : '';
@@ -339,12 +367,13 @@ function renderComparisonTable(chart: ComparisonTableData): string {
     // Label
     r += `<div style="flex:1.5;font-size:12px;font-weight:${row.is_total ? '700' : '500'};color:${C.text}">${row.label}</div>`;
     // Values
+    const values = row.values || [];
     for (let i = 1; i < headers.length; i++) {
-      const val = row.values[i - 1];
-      const isVariance = headers[i]?.toLowerCase().includes('var');
+      const val = values[i - 1];
+      const isVariance = (headers[i] || '').toLowerCase().includes('var');
       const numVal = typeof val === 'number' ? val : parseFloat(String(val));
       const color = isVariance && !isNaN(numVal) ? varColor(numVal) : C.text;
-      r += `<div style="flex:1;text-align:right;font-size:12px;font-weight:${weight};color:${color}">${val}</div>`;
+      r += `<div style="flex:1;text-align:right;font-size:12px;font-weight:${weight};color:${color}">${val !== undefined && val !== null ? val : '-'}</div>`;
     }
     r += `</div>`;
     return r;
@@ -358,19 +387,20 @@ function renderComparisonTable(chart: ComparisonTableData): string {
 // ═══════════════════════════════════════════════════════════
 
 function renderMetricCards(chart: MetricCardsData): string {
-  const { cards } = chart.data;
-  if (!cards.length) return '';
+  const { cards } = chart.data || {};
+  if (!cards || !Array.isArray(cards) || !cards.length) return '';
 
   const cols = cards.length <= 3 ? cards.length : cards.length === 4 ? 4 : 3;
 
   const cardHtml = cards.map(card => {
+    if (!card || !card.label) return '';
     const trendColor = card.trend === 'up' ? C.green : card.trend === 'down' ? C.red : C.textMid;
     const trendIcon = card.trend === 'up' ? '&#x25B2;' : card.trend === 'down' ? '&#x25BC;' : '';
-    const changePct = card.change_pct !== undefined
+    const changePct = card.change_pct !== undefined && typeof card.change_pct === 'number' && !isNaN(card.change_pct)
       ? `<span style="font-size:11px;font-weight:600;color:${trendColor}">${trendIcon} ${card.change_pct >= 0 ? '+' : ''}${card.change_pct.toFixed(1)}%</span>`
       : '';
 
-    const displayValue = typeof card.value === 'number' ? fmt(card.value, card.format) : card.value;
+    const displayValue = typeof card.value === 'number' ? fmt(card.value, card.format) : (card.value || '-');
 
     return `
       <div style="padding:14px 16px;background:${C.bgWarm};border:1px solid ${C.borderL};border-radius:10px;text-align:center">

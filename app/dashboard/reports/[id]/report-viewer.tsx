@@ -134,7 +134,8 @@ function separateContentLegacy(content: string): { narrative: string; chartHTML:
   let cMatch
   while ((cMatch = chartRegex.exec(content)) !== null) {
     const block = cMatch[0]
-    if (!block.includes('display:') && !block.includes('grid') && !block.includes('border-radius') && block.length < 200) continue
+    if (!block.includes('display:') && !block.includes('grid') && !block.includes('border-radius') && block.length < 200)
+      continue
     chartParts.push(block)
   }
 
@@ -212,7 +213,9 @@ function renderFormattedSections(
   const sectionsHTML = activeSections
     .map((section, idx) => {
       const { narrative, chartHTML } = getDisplayContent(section)
-      const finalChartHTML = section.chart_data ? renderChart(section.chart_data as ChartData) : chartHTML
+
+      // ✅ Fix 3: chart_html first, chart_data fallback
+      const finalChartHTML = chartHTML || (section.chart_data ? renderChart(section.chart_data as ChartData) : '')
 
       let html = `<div data-section="${section.id}" style="margin-bottom:36px;">`
       if (finalChartHTML && idx === 0)
@@ -740,22 +743,18 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                 {orderedSections
                   .filter((s) => s.content)
                   .map((section, idx) => {
-                    const { narrative, chartHTML } = getDisplayContent(section)
+                    const { narrative } = getDisplayContent(section)
                     return (
                       <div key={section.id} data-section={section.id} style={{ marginBottom: '36px' }}>
                         {idx === 0 ? (
-                          section.chart_data ? (
-                            <div
-                              data-chart="header"
-                              style={{ marginBottom: '24px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
-                              dangerouslySetInnerHTML={{ __html: renderChart(section.chart_data as ChartData) }}
-                            />
-                          ) : section.chart_html ? (
-                            <div
-                              data-chart="header"
-                              style={{ marginBottom: '24px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
-                              dangerouslySetInnerHTML={{ __html: section.chart_html }}
-                            />
+                          section.chart_html ? (
+                            <div data-chart="header" style={{ marginBottom: '24px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+                              <div dangerouslySetInnerHTML={{ __html: section.chart_html }} />
+                            </div>
+                          ) : section.chart_data ? (
+                            <div data-chart="header" style={{ marginBottom: '24px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+                              <div dangerouslySetInnerHTML={{ __html: renderChart(section.chart_data as ChartData) }} />
+                            </div>
                           ) : null
                         ) : null}
 
@@ -788,18 +787,14 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                         )}
 
                         {idx !== 0 ? (
-                          section.chart_data ? (
-                            <div
-                              data-chart={section.id}
-                              style={{ marginTop: '20px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
-                              dangerouslySetInnerHTML={{ __html: renderChart(section.chart_data as ChartData) }}
-                            />
-                          ) : section.chart_html ? (
-                            <div
-                              data-chart={section.id}
-                              style={{ marginTop: '20px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}
-                              dangerouslySetInnerHTML={{ __html: section.chart_html }}
-                            />
+                          section.chart_html ? (
+                            <div data-chart={section.id} style={{ marginTop: '20px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+                              <div dangerouslySetInnerHTML={{ __html: section.chart_html }} />
+                            </div>
+                          ) : section.chart_data ? (
+                            <div data-chart={section.id} style={{ marginTop: '20px', width: '100%', maxWidth: '100%', overflow: 'hidden' }}>
+                              <div dangerouslySetInnerHTML={{ __html: renderChart(section.chart_data as ChartData) }} />
+                            </div>
                           ) : null
                         ) : null}
                       </div>
@@ -914,7 +909,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         style={{
-                          transition: 'transform 0.25s cubic-bezier(0.22,1,0.36,1)',
+                          transition: 'transform 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
                           transform: isOpen ? 'rotate(180deg)' : 'rotate(0deg)',
                           flexShrink: 0,
                         }}
@@ -950,15 +945,16 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                         />
 
                         {/* Chart */}
-                        {section.chart_data || section.chart_html ? (
+                        {section.chart_html || section.chart_data ? (
                           <div style={{ padding: '0 16px 16px' }}>
                             <div style={{ borderRadius: 10, border: `1px solid ${W.borderL}`, overflow: 'hidden', background: W.bgWarm }}>
-                              <div
-                                style={{ padding: 16, maxWidth: 960 }}
-                                dangerouslySetInnerHTML={{
-                                  __html: section.chart_data ? renderChart(section.chart_data as ChartData) : section.chart_html || '',
-                                }}
-                              />
+                              <div style={{ padding: 16, maxWidth: 960 }}>
+                                {section.chart_html ? (
+                                  <div dangerouslySetInnerHTML={{ __html: section.chart_html }} />
+                                ) : section.chart_data ? (
+                                  <div dangerouslySetInnerHTML={{ __html: renderChart(section.chart_data as ChartData) }} />
+                                ) : null}
+                              </div>
                             </div>
                           </div>
                         ) : null}
@@ -1227,7 +1223,9 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                 <div style={{ fontSize: 11, color: W.textMuted, marginTop: 2 }}>
                   How your report will render in email clients
                   {emailPreviewSize && <span style={{ marginLeft: 8 }}> · {emailPreviewSize}KB</span>}
-                  {emailPreviewSize && emailPreviewSize < 102 && <span style={{ marginLeft: 4, color: W.green, fontWeight: 600 }}> (under Gmail limit)</span>}
+                  {emailPreviewSize && emailPreviewSize < 102 && (
+                    <span style={{ marginLeft: 4, color: W.green, fontWeight: 600 }}> (under Gmail limit)</span>
+                  )}
                 </div>
               </div>
 

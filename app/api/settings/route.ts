@@ -1,5 +1,5 @@
-import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '@clerk/nextjs/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin as supabase } from '@/lib/supabase'
 
 export async function GET() {
@@ -19,32 +19,6 @@ export async function GET() {
       return NextResponse.json({ success: false, error: error.message }, { status: 500 })
     }
 
-    // If no settings exist, create defaults
-    if (!data) {
-      const defaultSettings = {
-        user_id: userId,
-        company_name: null,
-        company_logo_url: null,
-        accent_color: '#27272A',
-        secondary_color: '#EFF6FF',
-        report_accent_color: '#2563EB',
-        ai_tone: 'balanced',
-        custom_disclaimer: null,
-      }
-
-      const { data: newSettings, error: insertError } = await supabase
-        .from('user_settings')
-        .insert(defaultSettings)
-        .select()
-        .single()
-
-      if (insertError) {
-        return NextResponse.json({ success: false, error: insertError.message }, { status: 500 })
-      }
-
-      return NextResponse.json({ success: true, data: newSettings })
-    }
-
     return NextResponse.json({ success: true, data })
   } catch (error) {
     console.error('Settings GET error:', error)
@@ -59,16 +33,32 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 })
     }
 
-    const {
-      company_name,
-      accent_color,
-      secondary_color,
-      report_accent_color,
-      ai_tone,
-      custom_disclaimer,
-      report_template,
-      export_name_template,
-    } = await request.json()
+    const body = await request.json()
+
+    // All allowed fields — includes new AI preferences + paragraph targets
+    const allowedFields = [
+      'company_name',
+      'accent_color',
+      'secondary_color',
+      'report_accent_color',
+      'ai_tone',
+      'custom_disclaimer',
+      'report_template',
+      'export_name_template',
+      'ai_preferences',
+      'paragraph_targets',
+      'company_logo_url',
+    ]
+
+    // Build update object from allowed fields only
+    const updateData: Record<string, any> = {}
+    for (const field of allowedFields) {
+      if (body[field] !== undefined) {
+        updateData[field] = body[field]
+      }
+    }
+
+    updateData.updated_at = new Date().toISOString()
 
     // Check if settings exist
     const { data: existing } = await supabase
@@ -78,19 +68,7 @@ export async function POST(request: NextRequest) {
       .single()
 
     if (existing) {
-      const updateData: Record<string, unknown> = {
-        updated_at: new Date().toISOString(),
-      }
-      // Only include fields that were sent (allows partial updates)
-      if (company_name !== undefined) updateData.company_name = company_name
-      if (accent_color !== undefined) updateData.accent_color = accent_color
-      if (secondary_color !== undefined) updateData.secondary_color = secondary_color
-      if (report_accent_color !== undefined) updateData.report_accent_color = report_accent_color || '#2563EB'
-      if (ai_tone !== undefined) updateData.ai_tone = ai_tone
-      if (custom_disclaimer !== undefined) updateData.custom_disclaimer = custom_disclaimer
-      if (report_template !== undefined) updateData.report_template = report_template
-      if (export_name_template !== undefined) updateData.export_name_template = export_name_template
-
+      // Update
       const { data, error } = await supabase
         .from('user_settings')
         .update(updateData)
@@ -99,6 +77,7 @@ export async function POST(request: NextRequest) {
         .single()
 
       if (error) {
+        console.error('Settings update error:', error)
         return NextResponse.json({ success: false, error: error.message }, { status: 500 })
       }
 
@@ -107,21 +86,12 @@ export async function POST(request: NextRequest) {
       // Insert
       const { data, error } = await supabase
         .from('user_settings')
-        .insert({
-          user_id: userId,
-          company_name,
-          accent_color,
-          secondary_color,
-          report_accent_color: report_accent_color || '#2563EB',
-          ai_tone,
-          custom_disclaimer,
-          report_template: report_template || null,
-          export_name_template: export_name_template || null,
-        })
+        .insert({ user_id: userId, ...updateData })
         .select()
         .single()
 
       if (error) {
+        console.error('Settings insert error:', error)
         return NextResponse.json({ success: false, error: error.message }, { status: 500 })
       }
 

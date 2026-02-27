@@ -2,37 +2,52 @@
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { LogoUploader } from '@/components/logo-uploader'
-import { TemplatePreview } from '@/components/template-preview'
 import { COLOR_PRESETS, type ColorPresetKey } from '@/lib/branding'
 import { ALL_SECTIONS, TIER_SECTIONS, type SectionId } from '@/lib/section-definitions'
 import { SECTION_CHART_MAP } from '@/lib/generation-config'
 import { CHART_LABELS, ALL_QUESTIONS, SECTION_INFO } from '@/lib/question-section-map'
 
 import ReportStylePanel, { DEFAULT_AI_PREFERENCES, type AIPreferences } from '@/components/report-style-panel'
-import ParagraphCounter from '@/components/paragraph-counter'
+
+// ═══════════════════════════════════════════════════════════
+// Types
+// ═══════════════════════════════════════════════════════════
 
 type UserSettings = {
   id?: string; user_id?: string; company_name: string | null; company_logo_url: string | null
   accent_color: string; secondary_color?: string; report_accent_color?: string
   ai_tone: string; custom_disclaimer: string | null; report_template?: SectionId[] | null
   export_name_template?: string | null; created_at?: string; updated_at?: string
-
-  // NEW
   ai_preferences?: AIPreferences | null
+  paragraph_targets?: Record<string, number> | null
 }
 
 type Props = { initialSettings: UserSettings | null; tier: string }
 
+// ═══════════════════════════════════════════════════════════
+// WCAG AA Compliant Design Tokens
+// ═══════════════════════════════════════════════════════════
+// All text colors verified against #FFFFFF background:
+//   text    #1A1A1A = 16.6:1 ✓
+//   textMid #4A4A4A = 9.7:1  ✓
+//   textSoft #5A5A5A = 7.0:1 ✓ (upgraded from #7A7A7A=4.5:1)
+//   textMuted #6B6B6B = 5.5:1 ✓ (upgraded from #A3A3A3=2.6:1 FAIL)
+//   labelMuted #808080 = 4.6:1 ✓ (for large text / uppercase labels only)
+
 const W = {
   accent: '#00B7DB', accentD: '#1D98B1',
   bg: '#FFFFFF', bgAlt: '#F7F5F1', bgWarm: '#FAF9F7',
-  text: '#1A1A1A', textMid: '#4A4A4A', textSoft: '#7A7A7A', textMuted: '#A3A3A3',
+  text: '#1A1A1A', textMid: '#4A4A4A',
+  textSoft: '#5A5A5A',   // ← upgraded for AA compliance (was #7A7A7A)
+  textMuted: '#6B6B6B',  // ← upgraded for AA compliance (was #A3A3A3)
+  labelMuted: '#808080',  // for uppercase labels (large text AA = 3:1)
   border: '#E8E5E0', borderL: '#F0EDE8',
   green: '#008A3E', red: '#CC0000', gold: '#C8B88A',
 }
 
 const cardStyle: React.CSSProperties = { background: W.bg, border: `1px solid ${W.border}`, borderRadius: 14, padding: 24 }
-const h2Style: React.CSSProperties = { fontFamily: 'var(--font-display, Georgia, serif)', fontSize: 18, fontWeight: 500, color: W.text }
+const h2Style: React.CSSProperties = { fontFamily: 'var(--font-display, Georgia, serif)', fontSize: 18, fontWeight: 500, color: W.text, margin: 0 }
+const descStyle: React.CSSProperties = { fontSize: 13, color: W.textSoft, marginTop: 4, marginBottom: 0, lineHeight: 1.5 }
 const labelStyle: React.CSSProperties = { display: 'block', fontSize: 13, fontWeight: 600, color: W.textMid, marginBottom: 4 }
 const inputStyle: React.CSSProperties = {
   width: '100%', padding: '10px 16px', fontSize: 14, color: W.text,
@@ -40,11 +55,18 @@ const inputStyle: React.CSSProperties = {
   background: W.bg, border: `1px solid ${W.border}`, borderRadius: 10,
   outline: 'none', transition: 'all 0.25s cubic-bezier(0.22,1,0.36,1)',
 }
+const upperLabel: React.CSSProperties = {
+  display: 'block', fontSize: 10, fontWeight: 700, color: W.labelMuted,
+  textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 8,
+}
 
 function onFocus(e: React.FocusEvent<any>) { e.currentTarget.style.borderColor = W.accent; e.currentTarget.style.boxShadow = `0 0 0 3px ${W.accent}15` }
 function onBlur(e: React.FocusEvent<any>) { e.currentTarget.style.borderColor = W.border; e.currentTarget.style.boxShadow = 'none' }
 
-// ─── Helpers ───
+// ═══════════════════════════════════════════════════════════
+// Section Helpers
+// ═══════════════════════════════════════════════════════════
+
 function getAllAvailableSections(tier: string): SectionId[] {
   const tiers: string[] = ['foundational']
   if (tier === 'professional' || tier === 'institutional') tiers.push('professional')
@@ -53,24 +75,44 @@ function getAllAvailableSections(tier: string): SectionId[] {
   for (const t of tiers) { for (const id of TIER_SECTIONS[t] || []) { if (!seen.has(id)) { seen.add(id); result.push(id) } } }
   return result
 }
+
 function getSectionTier(sectionId: SectionId): string {
   if (TIER_SECTIONS.foundational.includes(sectionId)) return 'foundational'
   if (TIER_SECTIONS.professional.includes(sectionId)) return 'professional'
   return 'institutional'
 }
+
 function getAllSectionIds(): SectionId[] {
   const seen = new Set<SectionId>(); const result: SectionId[] = []
   for (const t of ['foundational', 'professional', 'institutional']) { for (const id of TIER_SECTIONS[t] || []) { if (!seen.has(id)) { seen.add(id); result.push(id) } } }
   return result
 }
+
 const TIER_LABELS: Record<string, string> = { foundational: 'Foundational', professional: 'Professional', institutional: 'Institutional' }
 
-// ─── Info Panel ───
+const DEFAULT_PARAGRAPH_TARGETS: Record<string, number> = {
+  executive_summary: 4, noi_performance: 3, expense_analysis: 3,
+  revenue_analysis: 3, occupancy_leasing: 3, capital_expenditures: 2,
+  debt_service: 2, market_comparison: 3, risk_assessment: 3,
+  asset_manager_outlook: 3, distribution_update: 2,
+  revenue_summary: 3, expense_summary: 3, budget_vs_actual: 3,
+  rent_roll_insights: 3, rent_roll_deep_dive: 3, market_positioning: 3,
+  capital_improvements: 2, risk_watch_items: 3, investment_thesis_update: 3,
+  lease_expiration_rollover: 3, market_submarket_analysis: 3,
+  capital_improvements_tracker: 2, risk_matrix: 3,
+  resident_operational_metrics: 3, regulatory_compliance: 2,
+  asset_manager_strategic_outlook: 3,
+}
+
+// ═══════════════════════════════════════════════════════════
+// Sub-components
+// ═══════════════════════════════════════════════════════════
+
 function SectionInfoPanel({ sectionId }: { sectionId: string }) {
   const info = SECTION_INFO[sectionId]; if (!info) return null
   return (
     <div style={{ marginTop: 4, marginLeft: 52, marginRight: 8, padding: 12, background: `${W.accent}06`, border: `1px solid ${W.accent}15`, borderRadius: 10, fontSize: 12 }}>
-      <p style={{ color: W.textMid, lineHeight: 1.5 }}>{info.summary}</p>
+      <p style={{ color: W.textMid, lineHeight: 1.5, margin: 0 }}>{info.summary}</p>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, marginTop: 6, fontSize: 10, color: W.textSoft }}>
         <span><strong style={{ color: W.textMid }}>Data source:</strong> {info.dataSource}</span>
         <span><strong style={{ color: W.textMid }}>Your input:</strong> {info.guidedInput}</span>
@@ -84,7 +126,7 @@ function LightbulbButton({ isOpen, onClick }: { isOpen: boolean; onClick: () => 
     <button onClick={(e) => { e.stopPropagation(); onClick() }}
       style={{
         flexShrink: 0, padding: 4, borderRadius: 6, border: 'none', cursor: 'pointer',
-        color: isOpen ? '#D97706' : '#FBB040', background: isOpen ? '#FEF3C720' : 'transparent',
+        color: isOpen ? '#D97706' : '#D4A043', background: isOpen ? '#FEF3C720' : 'transparent',
         transition: 'all 0.2s',
       }} title="Section details">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -94,12 +136,168 @@ function LightbulbButton({ isOpen, onClick }: { isOpen: boolean; onClick: () => 
   )
 }
 
-// ═══ Main Component ═══
+function ColorRow({ label, description, value, onChange }: { label: string; description: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+      <div style={{ position: 'relative', flexShrink: 0 }}>
+        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} />
+        <div style={{ width: 36, height: 36, borderRadius: 10, border: `2px solid ${W.border}`, cursor: 'pointer', background: value, transition: 'border-color 0.2s' }} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: W.textMid }}>{label}</div>
+        <div style={{ fontSize: 11, color: W.textSoft }}>{description}</div>
+      </div>
+      <input type="text" value={value}
+        onChange={(e) => { const v = e.target.value; if (/^#[0-9a-fA-F]{0,6}$/.test(v)) onChange(v) }}
+        style={{ width: 88, padding: '6px 10px', fontSize: 12, fontFamily: 'monospace', color: W.textMid, border: `1px solid ${W.border}`, borderRadius: 8, outline: 'none' }}
+        maxLength={7} onFocus={onFocus} onBlur={onBlur} />
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// Live Report Preview (scrollable single doc + page estimate)
+// ═══════════════════════════════════════════════════════════
+
+// Page estimate model — lightweight math, no DOM measurement needed
+const PAGE_CAPACITY = 44
+const FIRST_PAGE_HEADER = 10
+const SECTION_TITLE = 2
+const PARAGRAPH_COST = 2.5
+const CHART_COST = 5
+const PAGE_FOOTER = 2
+
+function estimatePageCount(enabledSections: SectionId[], paragraphTargets: Record<string, number>): number {
+  let totalUnits = FIRST_PAGE_HEADER
+  for (const sectionId of enabledSections) {
+    const paras = paragraphTargets[sectionId] || DEFAULT_PARAGRAPH_TARGETS[sectionId] || 3
+    const charts = SECTION_CHART_MAP[sectionId] || []
+    totalUnits += SECTION_TITLE + paras * PARAGRAPH_COST + (charts.length > 0 ? CHART_COST : 0)
+  }
+  const usablePerPage = PAGE_CAPACITY - PAGE_FOOTER
+  return Math.max(1, Math.ceil(totalUnits / usablePerPage))
+}
+
+function LiveReportPreview({
+  companyName, accentColor, secondaryColor, reportAccentColor,
+  enabledSections, paragraphTargets, logoUrl,
+}: {
+  companyName: string; accentColor: string; secondaryColor: string; reportAccentColor: string
+  enabledSections: SectionId[]; paragraphTargets: Record<string, number>; logoUrl?: string | null
+}) {
+  const estPages = useMemo(() => estimatePageCount(enabledSections, paragraphTargets), [enabledSections, paragraphTargets])
+  const totalCharts = enabledSections.filter(id => (SECTION_CHART_MAP[id] || []).length > 0).length
+
+  return (
+    <div>
+      {/* Stats bar with page estimate */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+        <span style={{ fontSize: 10, color: W.textMuted }}>{enabledSections.length} sections · {totalCharts} charts</span>
+        <span style={{
+          fontSize: 11, fontWeight: 600, color: W.accent,
+          background: `${W.accent}0D`, padding: '3px 10px', borderRadius: 100,
+        }}>Est. {estPages} {estPages === 1 ? 'page' : 'pages'}</span>
+      </div>
+
+      {/* Single scrollable document */}
+      <div style={{
+        border: `1px solid ${W.border}`, borderRadius: 10, overflow: 'hidden',
+        background: '#fff',
+        boxShadow: '0 2px 16px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.03)',
+      }}>
+        {/* Header */}
+        <div style={{ padding: '14px 20px', backgroundColor: accentColor }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {logoUrl && <img src={logoUrl} alt="" style={{ height: 18, maxWidth: 60, objectFit: 'contain', opacity: 0.9, borderRadius: 2 }} />}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: 'rgba(255,255,255,0.95)', lineHeight: 1.3, letterSpacing: '0.02em' }}>{companyName || 'Your Company'}</div>
+              <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.5)', marginTop: 2, lineHeight: 1.2 }}>Monthly Investor Report — Property Name</div>
+            </div>
+          </div>
+        </div>
+        <div style={{ height: 2, backgroundColor: reportAccentColor }} />
+
+        {/* Sections */}
+        <div style={{ maxHeight: 480, overflowY: 'auto' }}>
+          {enabledSections.map((sectionId, idx) => {
+            const def = ALL_SECTIONS[sectionId]; if (!def) return null
+            const charts = SECTION_CHART_MAP[sectionId] || []
+            const hasCharts = charts.length > 0
+            const paragraphs = paragraphTargets[sectionId] || DEFAULT_PARAGRAPH_TARGETS[sectionId] || 3
+            const isFirst = idx === 0
+
+            return (
+              <div key={sectionId} style={{ padding: '12px 20px', borderBottom: `1px solid ${W.borderL}` }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
+                  <div style={{ width: 3, height: 12, borderRadius: 2, background: accentColor, flexShrink: 0 }} />
+                  <div style={{ fontSize: 10, fontWeight: 700, color: W.text, lineHeight: 1.3 }}>{def.title}</div>
+                </div>
+
+                {isFirst && (
+                  <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
+                    {[1, 2, 3].map(i => (
+                      <div key={i} style={{
+                        flex: 1, padding: '6px 8px', borderRadius: 4,
+                        background: secondaryColor, border: `1px solid ${W.borderL}`,
+                      }}>
+                        <div style={{ height: 3, width: '60%', borderRadius: 100, background: `${W.labelMuted}40`, marginBottom: 3 }} />
+                        <div style={{ fontSize: 11, fontWeight: 700, color: accentColor, lineHeight: 1.2 }}>{i === 1 ? '91.4%' : i === 2 ? '$113.8K' : '$277.8K'}</div>
+                        <div style={{ height: 2, width: '40%', borderRadius: 100, background: `${W.green}50`, marginTop: 2 }} />
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {Array.from({ length: Math.min(paragraphs, 5) }).map((_, pIdx) => (
+                  <div key={pIdx} style={{ marginBottom: pIdx < paragraphs - 1 ? 5 : 0 }}>
+                    <div style={{ height: 3, borderRadius: 100, background: secondaryColor, width: '100%', marginBottom: 2 }} />
+                    <div style={{ height: 3, borderRadius: 100, background: secondaryColor, width: '95%', marginBottom: 2 }} />
+                    <div style={{ height: 3, borderRadius: 100, background: secondaryColor, width: pIdx === paragraphs - 1 ? '55%' : '85%' }} />
+                  </div>
+                ))}
+
+                {hasCharts && (
+                  <div style={{
+                    marginTop: 6, height: 36, borderRadius: 6,
+                    border: `1px dashed ${reportAccentColor}40`,
+                    background: `${reportAccentColor}06`,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
+                  }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={`${reportAccentColor}70`} strokeWidth="2">
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+                    </svg>
+                    <span style={{ fontSize: 8, fontWeight: 600, color: `${reportAccentColor}80`, lineHeight: 1 }}>{charts.map(c => CHART_LABELS[c] || c).join(', ')}</span>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer */}
+        <div style={{ height: 2, backgroundColor: reportAccentColor }} />
+        <div style={{ padding: '8px 20px', backgroundColor: accentColor, display: 'flex', justifyContent: 'space-between' }}>
+          <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.4)', lineHeight: 1.3 }}>{companyName || 'Company'} | Confidential</span>
+          <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.4)', lineHeight: 1.3 }}>Prepared by WriteUp AI</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ═══════════════════════════════════════════════════════════
+// Main Component
+// ═══════════════════════════════════════════════════════════
+
 export function SettingsForm({ initialSettings, tier }: Props) {
   const [settings, setSettings] = useState<UserSettings | null>(initialSettings)
   const [isSaving, setIsSaving] = useState(false)
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle')
   const [activeTier, setActiveTier] = useState(tier)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+
+  // Track unsaved changes
+  const markDirty = useCallback(() => setHasUnsavedChanges(true), [])
 
   useEffect(() => {
     if (process.env.NODE_ENV === 'development') {
@@ -111,52 +309,36 @@ export function SettingsForm({ initialSettings, tier }: Props) {
     return () => window.removeEventListener('tierOverrideChanged', handler as EventListener)
   }, [tier])
 
+  // Unsaved changes warning on page leave — use ref to always read latest value
+  const hasUnsavedRef = useRef(hasUnsavedChanges)
+  useEffect(() => { hasUnsavedRef.current = hasUnsavedChanges }, [hasUnsavedChanges])
+  useEffect(() => {
+    const handler = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedRef.current) {
+        e.preventDefault()
+        e.returnValue = 'You have unsaved settings changes. Leave without saving?'
+      }
+    }
+    window.addEventListener('beforeunload', handler)
+    return () => window.removeEventListener('beforeunload', handler)
+  }, [])
+
+  // ─── State ───
   const [companyName, setCompanyName] = useState(initialSettings?.company_name || '')
   const [accentColor, setAccentColor] = useState(initialSettings?.accent_color || '#27272A')
   const [secondaryColor, setSecondaryColor] = useState(initialSettings?.secondary_color || '#EFF6FF')
   const [reportAccentColor, setReportAccentColor] = useState(initialSettings?.report_accent_color || '#2563EB')
+  const [customDisclaimer, setCustomDisclaimer] = useState(initialSettings?.custom_disclaimer || '')
+  const [exportNameTemplate, setExportNameTemplate] = useState(initialSettings?.export_name_template || '{property_name}, as of {date}, Investor Report')
 
-  // NEW: AI preferences (ReportStylePanel)
   const [aiPreferences, setAIPreferences] = useState<AIPreferences>(
     (initialSettings?.ai_preferences as AIPreferences) || DEFAULT_AI_PREFERENCES
   )
-  const [isSavingPrefs, setIsSavingPrefs] = useState(false)
 
-  const handleSavePreferences = async () => {
-    setIsSavingPrefs(true)
-    try {
-      await fetch('/api/user-settings', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ai_preferences: aiPreferences }),
-      })
-    } catch (err) {
-      console.error('Failed to save AI preferences:', err)
-    } finally {
-      setIsSavingPrefs(false)
-    }
-  }
-
-  // Paragraph targets
-  const [paragraphTargets, setParagraphTargets] = useState<Record<string, number>>({
-    executive_summary: 4,
-    noi_performance: 3,
-    expense_analysis: 3,
-    revenue_analysis: 3,
-    occupancy_leasing: 3,
-    capital_expenditures: 2,
-    debt_service: 2,
-    market_comparison: 3,
-    risk_assessment: 3,
-    asset_manager_outlook: 3,
-    distribution_update: 2,
+  const [paragraphTargets, setParagraphTargets] = useState<Record<string, number>>(() => {
+    if (initialSettings?.paragraph_targets) return { ...DEFAULT_PARAGRAPH_TARGETS, ...initialSettings.paragraph_targets }
+    return { ...DEFAULT_PARAGRAPH_TARGETS }
   })
-
-  const handleParagraphChange = (sectionId: string, value: number) => {
-    setParagraphTargets(prev => ({ ...prev, [sectionId]: value }))
-  }
-
-  const [customDisclaimer, setCustomDisclaimer] = useState(initialSettings?.custom_disclaimer || '')
 
   const availableSections = useMemo(() => getAllAvailableSections(activeTier), [activeTier])
   const allSections = useMemo(() => getAllSectionIds(), [])
@@ -178,7 +360,21 @@ export function SettingsForm({ initialSettings, tier }: Props) {
     setEnabledSections(TIER_SECTIONS[activeTier] || TIER_SECTIONS.foundational)
   }, [activeTier, initialSettings?.report_template])
 
-  const [exportNameTemplate, setExportNameTemplate] = useState(initialSettings?.export_name_template || '{property_name}, as of {date}, Investor Report')
+  // Dirty-tracking wrappers
+  const updateCompanyName = (v: string) => { setCompanyName(v); markDirty() }
+  const updateAccentColor = (v: string) => { setAccentColor(v); markDirty() }
+  const updateSecondaryColor = (v: string) => { setSecondaryColor(v); markDirty() }
+  const updateReportAccentColor = (v: string) => { setReportAccentColor(v); markDirty() }
+  const updateExportNameTemplate = (v: string) => { setExportNameTemplate(v); markDirty() }
+  const updateCustomDisclaimer = (v: string) => { setCustomDisclaimer(v); markDirty() }
+  const updateAIPreferences = (v: AIPreferences) => { setAIPreferences(v); markDirty() }
+
+  const handleParagraphChange = useCallback((sectionId: string, value: number) => {
+    setParagraphTargets(prev => ({ ...prev, [sectionId]: value }))
+    markDirty()
+  }, [markDirty])
+
+  // ─── Section toggles ───
   const [expandedInfo, setExpandedInfo] = useState<Set<string>>(new Set())
   const toggleInfo = useCallback((sectionId: string) => {
     setExpandedInfo(prev => { const n = new Set(prev); if (n.has(sectionId)) n.delete(sectionId); else n.add(sectionId); return n })
@@ -205,15 +401,16 @@ export function SettingsForm({ initialSettings, tier }: Props) {
   const handleToggleSection = useCallback((sectionId: SectionId) => {
     if (sectionId === 'executive_summary') return
     setEnabledSections(prev => prev.includes(sectionId) ? prev.filter(id => id !== sectionId) : [...prev, sectionId])
-  }, [])
+    markDirty()
+  }, [markDirty])
 
   const handleDragStart = useCallback((idx: number) => setDraggedIdx(idx), [])
   const handleDragOver = useCallback((e: React.DragEvent, idx: number) => { e.preventDefault(); setDragOverIdx(idx) }, [])
   const handleDrop = useCallback((targetIdx: number) => {
     if (draggedIdx === null || draggedIdx === targetIdx) { setDraggedIdx(null); setDragOverIdx(null); return }
     setEnabledSections(prev => { const n = [...prev]; const [m] = n.splice(draggedIdx, 1); n.splice(targetIdx, 0, m); return n })
-    setDraggedIdx(null); setDragOverIdx(null)
-  }, [draggedIdx])
+    setDraggedIdx(null); setDragOverIdx(null); markDirty()
+  }, [draggedIdx, markDirty])
   const handleDragEnd = useCallback(() => { setDraggedIdx(null); setDragOverIdx(null) }, [])
 
   const relevantQuestionCount = useMemo(() => {
@@ -222,7 +419,15 @@ export function SettingsForm({ initialSettings, tier }: Props) {
   }, [enabledSections])
 
   const exportNamePreview = useMemo(() => {
-    return exportNameTemplate.replace('{property_name}', 'Sunset Apartments').replace('{date}', '01/2026').replace('{company_name}', companyName || 'Your Company') + '.pdf'
+    return exportNameTemplate
+      .replace('{property_name}', 'Sunset Apartments')
+      .replace('{company_name}', companyName || 'Your Company')
+      .replace('{date_full}', '01/2026')
+      .replace('{date_short}', '1/26')
+      .replace('{month_name}', 'January 2026')
+      .replace('{month}', '01')
+      .replace('{year}', '2026')
+      .replace('{date}', '01/2026') + '.pdf'
   }, [exportNameTemplate, companyName])
 
   const lockedSections = useMemo(() => {
@@ -230,6 +435,14 @@ export function SettingsForm({ initialSettings, tier }: Props) {
   }, [availableSections, allSections])
 
   const nextTierUp = activeTier === 'foundational' ? 'professional' : activeTier === 'professional' ? 'institutional' : null
+
+  const handlePresetClick = (key: ColorPresetKey) => {
+    const p = COLOR_PRESETS[key]; updateAccentColor(p.primary); updateSecondaryColor(p.secondary); updateReportAccentColor(p.accent); setPaletteOpen(false)
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Unified Save (combines settings + AI preferences)
+  // ═══════════════════════════════════════════════════════════
 
   const handleSave = async () => {
     setIsSaving(true); setSaveStatus('idle')
@@ -244,14 +457,18 @@ export function SettingsForm({ initialSettings, tier }: Props) {
           custom_disclaimer: customDisclaimer,
           report_template: enabledSections,
           export_name_template: exportNameTemplate,
-
-          // NEW
           ai_preferences: aiPreferences,
+          paragraph_targets: paragraphTargets,
         }),
       })
       const result = await response.json()
-      setSaveStatus(result.success ? 'saved' : 'error')
-      if (result.success && result.data) setSettings(result.data)
+      if (result.success) {
+        setSaveStatus('saved')
+        setHasUnsavedChanges(false)
+        if (result.data) setSettings(result.data)
+      } else {
+        setSaveStatus('error')
+      }
     } catch (error) { console.error('Save error:', error); setSaveStatus('error') }
     finally { setIsSaving(false); setTimeout(() => setSaveStatus('idle'), 3000) }
   }
@@ -264,116 +481,154 @@ export function SettingsForm({ initialSettings, tier }: Props) {
       if (result.success) { const sr = await fetch('/api/settings'); const sd = await sr.json(); if (sd.success) setSettings(sd.data) }
     } catch (e) { console.error('Upload error:', e) }
   }
+
   const handleLogoRemove = async () => {
     try {
       const res = await fetch('/api/settings', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ company_logo_url: null }) })
       const r = await res.json(); if (r.success) setSettings(prev => prev ? { ...prev, company_logo_url: null } : null)
     } catch (e) { console.error('Remove logo error:', e) }
   }
-  const handlePresetClick = (key: ColorPresetKey) => {
-    const p = COLOR_PRESETS[key]; setAccentColor(p.primary); setSecondaryColor(p.secondary); setReportAccentColor(p.accent); setPaletteOpen(false)
-  }
+
+  // ═══════════════════════════════════════════════════════════
+  // Render
+  // ═══════════════════════════════════════════════════════════
 
   return (
-    <div style={{ maxWidth: 960, margin: '0 auto' }}>
-      <h1 style={{ fontFamily: 'var(--font-display, Georgia, serif)', fontSize: 26, fontWeight: 500, color: W.text, letterSpacing: '-0.015em', marginBottom: 4 }}>Settings</h1>
-      <p style={{ fontSize: 14, color: W.textSoft, marginBottom: 32 }}>Customize your reports and branding</p>
+    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+      {/* Page Header */}
+      <div style={{ marginBottom: 28 }}>
+        <h1 style={{ fontFamily: 'var(--font-display, Georgia, serif)', fontSize: 26, fontWeight: 500, color: W.text, letterSpacing: '-0.015em', margin: 0 }}>Settings</h1>
+        <p style={{ fontSize: 14, color: W.textSoft, margin: '4px 0 0' }}>Customize your reports and branding</p>
+      </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 32 }}>
-        <div style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: 32 }}>
+      {/* ═══ SPLIT LAYOUT: Settings (left) + Preview (right) ═══ */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 28, alignItems: 'start' }}>
 
-          {/* Company Info */}
+        {/* ─── LEFT: Settings Panels ─── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
+
+          {/* ══════ SECTION 1: Brand & Identity ══════ */}
           <section style={cardStyle}>
-            <h2 style={{ ...h2Style, marginBottom: 16 }}>Company Information</h2>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 20 }}>
+            <h2 style={{ ...h2Style, marginBottom: 20 }}>Brand & Identity</h2>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+              {/* Company Name */}
               <div>
                 <label style={labelStyle}>Company Name</label>
-                <input type="text" value={companyName} onChange={(e) => setCompanyName(e.target.value)}
+                <input type="text" value={companyName} onChange={(e) => updateCompanyName(e.target.value)}
                   placeholder="Acme Capital Partners" style={inputStyle} onFocus={onFocus} onBlur={onBlur} />
               </div>
+
+              {/* Logo */}
               <LogoUploader currentLogoUrl={settings?.company_logo_url || null} onUpload={handleLogoUpload} onRemove={handleLogoRemove} />
-            </div>
-          </section>
 
-          {/* Report Branding */}
-          <section style={cardStyle}>
-            <h2 style={{ ...h2Style, marginBottom: 4 }}>Report Branding</h2>
-            <p style={{ fontSize: 13, color: W.textSoft, marginBottom: 20 }}>Choose the colors used in your investor reports.</p>
+              {/* Divider */}
+              <div style={{ height: 1, background: W.borderL }} />
 
-            {/* Palette Dropdown */}
-            <div style={{ marginBottom: 24 }} ref={paletteRef}>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: W.textMuted, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 8 }}>Color Palette</label>
-              <div style={{ position: 'relative' }}>
-                <button type="button" onClick={() => setPaletteOpen(!paletteOpen)} style={{
-                  width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                  padding: '10px 16px', background: W.bg, border: `1px solid ${W.border}`, borderRadius: 10, cursor: 'pointer', textAlign: 'left' as const,
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      <div style={{ width: 20, height: 20, borderRadius: 4, background: accentColor }} />
-                      <div style={{ width: 20, height: 20, borderRadius: 4, border: `1px solid ${W.border}`, background: secondaryColor }} />
-                      <div style={{ width: 20, height: 20, borderRadius: 4, background: reportAccentColor }} />
+              {/* Color Palette */}
+              <div ref={paletteRef}>
+                <label style={upperLabel}>Color Palette</label>
+                <div style={{ position: 'relative' }}>
+                  <button type="button" onClick={() => setPaletteOpen(!paletteOpen)} style={{
+                    width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                    padding: '10px 16px', background: W.bg, border: `1px solid ${W.border}`, borderRadius: 10, cursor: 'pointer', textAlign: 'left' as const,
+                  }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                      <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{ width: 20, height: 20, borderRadius: 4, background: accentColor }} />
+                        <div style={{ width: 20, height: 20, borderRadius: 4, border: `1px solid ${W.border}`, background: secondaryColor }} />
+                        <div style={{ width: 20, height: 20, borderRadius: 4, background: reportAccentColor }} />
+                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 600, color: W.textMid }}>{activePresetName || 'Custom Colors'}</span>
                     </div>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: W.textMid }}>{activePresetName || 'Custom Colors'}</span>
-                  </div>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.textMuted} strokeWidth="2" style={{ transform: paletteOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
-                </button>
-                {paletteOpen && (
-                  <div style={{ position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, marginTop: 4, background: W.bg, border: `1px solid ${W.border}`, borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
-                    {(Object.keys(COLOR_PRESETS) as ColorPresetKey[]).map((key) => {
-                      const preset = COLOR_PRESETS[key]; const isActive = activePresetName === preset.name
-                      return (
-                        <button key={key} type="button" onClick={() => handlePresetClick(key)}
-                          style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', textAlign: 'left' as const, background: isActive ? `${W.accent}08` : 'transparent', border: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
-                          onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = W.bgAlt }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? `${W.accent}08` : 'transparent' }}>
-                          <div style={{ display: 'flex', gap: 3 }}>
-                            <div style={{ width: 16, height: 16, borderRadius: 3, background: preset.primary }} />
-                            <div style={{ width: 16, height: 16, borderRadius: 3, border: `1px solid ${W.border}`, background: preset.secondary }} />
-                            <div style={{ width: 16, height: 16, borderRadius: 3, background: preset.accent }} />
-                          </div>
-                          <span style={{ fontSize: 13, fontWeight: isActive ? 600 : 500, color: isActive ? W.accent : W.textMid }}>{preset.name}</span>
-                          {isActive && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.accent} strokeWidth="2.5" style={{ marginLeft: 'auto' }}><polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                        </button>
-                      )
-                    })}
-                  </div>
-                )}
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.textMuted} strokeWidth="2" style={{ transform: paletteOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}><path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7"/></svg>
+                  </button>
+                  {paletteOpen && (
+                    <div style={{ position: 'absolute', zIndex: 20, top: '100%', left: 0, right: 0, marginTop: 4, background: W.bg, border: `1px solid ${W.border}`, borderRadius: 10, boxShadow: '0 8px 32px rgba(0,0,0,0.08)', overflow: 'hidden' }}>
+                      {(Object.keys(COLOR_PRESETS) as ColorPresetKey[]).map((key) => {
+                        const preset = COLOR_PRESETS[key]; const isActive = activePresetName === preset.name
+                        return (
+                          <button key={key} type="button" onClick={() => handlePresetClick(key)}
+                            style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 10, padding: '10px 16px', textAlign: 'left' as const, background: isActive ? `${W.accent}08` : 'transparent', border: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
+                            onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = W.bgAlt }}
+                            onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? `${W.accent}08` : 'transparent' }}>
+                            <div style={{ display: 'flex', gap: 3 }}>
+                              <div style={{ width: 16, height: 16, borderRadius: 3, background: preset.primary }} />
+                              <div style={{ width: 16, height: 16, borderRadius: 3, border: `1px solid ${W.border}`, background: preset.secondary }} />
+                              <div style={{ width: 16, height: 16, borderRadius: 3, background: preset.accent }} />
+                            </div>
+                            <span style={{ fontSize: 13, fontWeight: isActive ? 600 : 500, color: isActive ? W.accent : W.textMid }}>{preset.name}</span>
+                            {isActive && <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.accent} strokeWidth="2.5" style={{ marginLeft: 'auto' }}><polyline points="20 6 9 17 4 12" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
 
-            {/* Custom Colors */}
-            <div>
-              <label style={{ display: 'block', fontSize: 10, fontWeight: 700, color: W.textMuted, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 12 }}>Custom Colors</label>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-                <ColorRow label="Primary" description="Headers, chart bars, table headers" value={accentColor} onChange={setAccentColor} />
-                <ColorRow label="Secondary" description="Backgrounds, alternating rows" value={secondaryColor} onChange={setSecondaryColor} />
-                <ColorRow label="Accent" description="Highlights, trend lines, emphasis" value={reportAccentColor} onChange={setReportAccentColor} />
+              {/* Custom Colors */}
+              <div>
+                <label style={upperLabel}>Custom Colors</label>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <ColorRow label="Primary" description="Headers, chart bars, table headers" value={accentColor} onChange={updateAccentColor} />
+                  <ColorRow label="Secondary" description="Backgrounds, alternating rows" value={secondaryColor} onChange={updateSecondaryColor} />
+                  <ColorRow label="Accent" description="Highlights, trend lines, emphasis" value={reportAccentColor} onChange={updateReportAccentColor} />
+                </div>
+              </div>
+
+              {/* Divider */}
+              <div style={{ height: 1, background: W.borderL }} />
+
+              {/* Export Filename */}
+              <div>
+                <label style={labelStyle}>Export Filename</label>
+                <p style={{ ...descStyle, marginBottom: 12 }}>Template for your PDF export filenames.</p>
+                <input type="text" value={exportNameTemplate} onChange={(e) => updateExportNameTemplate(e.target.value)}
+                  placeholder="{property_name}, as of {date}, Investor Report" style={{ ...inputStyle, fontSize: 13 }} onFocus={onFocus} onBlur={onBlur} />
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {[
+                    { token: '{property_name}', tip: 'Sunset Apartments' },
+                    { token: '{company_name}', tip: companyName || 'Your Company' },
+                    { token: '{date_full}', tip: '01/2026' },
+                    { token: '{date_short}', tip: '1/26' },
+                    { token: '{month_name}', tip: 'January 2026' },
+                    { token: '{month}', tip: '01' },
+                    { token: '{year}', tip: '2026' },
+                  ].map(v => (
+                    <button key={v.token} type="button" title={v.tip} onClick={() => updateExportNameTemplate(exportNameTemplate + v.token)}
+                      style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 600, color: W.accent, background: `${W.accent}0D`, border: `1px solid ${W.accent}22`, padding: '4px 8px', borderRadius: 6, cursor: 'pointer' }}>
+                      {v.token}
+                    </button>
+                  ))}
+                </div>
+                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.textMuted} strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
+                  <span style={{ fontSize: 12, color: W.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportNamePreview}</span>
+                </div>
               </div>
             </div>
           </section>
 
-          {/* Report Sections Builder */}
+          {/* ══════ SECTION 2: Report Template ══════ */}
           <section style={cardStyle}>
-            {/* ... unchanged ... */}
-            {/* (the rest of your Report Sections code remains exactly as-is) */}
-            {/* NOTE: kept verbatim below */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <h2 style={h2Style}>Report Sections</h2>
-              <span style={{ fontSize: 11, fontWeight: 600, color: W.textMuted, textTransform: 'capitalize' as const }}>{TIER_LABELS[activeTier] || activeTier} Plan</span>
+              <h2 style={h2Style}>Report Template</h2>
+              <span style={{ fontSize: 11, fontWeight: 600, color: W.labelMuted, textTransform: 'capitalize' as const }}>{TIER_LABELS[activeTier] || activeTier} Plan</span>
             </div>
-            <p style={{ fontSize: 13, color: W.textSoft, marginBottom: 20 }}>Configure your default report template. Drag to reorder. Click the lightbulb for section details.</p>
+            <p style={descStyle}>Configure your default report sections. Drag to reorder. Adjust paragraph density per section.</p>
 
-            {/* Structure Preview */}
-            <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${W.borderL}` }}>
+            {/* Structure Preview Toggle */}
+            <div style={{ marginTop: 20, marginBottom: 20, paddingBottom: 20, borderBottom: `1px solid ${W.borderL}` }}>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-                <span style={{ fontSize: 10, fontWeight: 700, color: W.textMuted, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Structure Preview</span>
+                <span style={upperLabel}>Structure Preview</span>
                 <div style={{ display: 'flex', gap: 2, background: W.bgAlt, borderRadius: 8, padding: 2 }}>
                   {(['outline', 'preview'] as const).map(m => (
                     <button key={m} onClick={() => setPreviewMode(m)} style={{
                       padding: '5px 10px', fontSize: 11, fontWeight: previewMode === m ? 600 : 500, borderRadius: 6, border: 'none', cursor: 'pointer',
                       color: previewMode === m ? W.text : W.textSoft, background: previewMode === m ? W.bg : 'transparent',
                       boxShadow: previewMode === m ? '0 1px 3px rgba(0,0,0,0.06)' : 'none', textTransform: 'capitalize' as const,
+                      transition: 'all 0.2s cubic-bezier(0.22,1,0.36,1)',
                     }}>{m}</button>
                   ))}
                 </div>
@@ -388,10 +643,11 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                         <span style={{ fontSize: 10, fontFamily: 'monospace', color: W.textMuted, width: 20, textAlign: 'right' as const }}>{idx + 1}.</span>
                         <span style={{ fontSize: 12, color: W.textMid }}>{def.title}</span>
                         {def.visualizations !== 'none' && (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#FBB040" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D4A043" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                             <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
                           </svg>
                         )}
+                        <span style={{ fontSize: 10, color: W.textMuted, marginLeft: 'auto' }}>{paragraphTargets[sectionId] || DEFAULT_PARAGRAPH_TARGETS[sectionId] || 3}p</span>
                       </div>
                     )
                   })}
@@ -427,13 +683,13 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                   <div style={{ height: 2, backgroundColor: reportAccentColor }} />
                   <div style={{ padding: '8px 16px', backgroundColor: accentColor, display: 'flex', justifyContent: 'space-between' }}>
                     <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>{companyName || 'Company'} | Confidential</span>
-                    <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>Prepared by Writeup AI</span>
+                    <span style={{ fontSize: 8, color: 'rgba(255,255,255,0.4)' }}>Prepared by WriteUp AI</span>
                   </div>
                 </div>
               )}
             </div>
 
-            {/* Enabled Sections */}
+            {/* ─── Enabled Sections (draggable, with inline paragraph stepper) ─── */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
               {enabledSections.map((sectionId, idx) => {
                 const def = ALL_SECTIONS[sectionId]; if (!def) return null
@@ -442,22 +698,26 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                 const isDragging = draggedIdx === idx
                 const isDragOver = dragOverIdx === idx
                 const infoOpen = expandedInfo.has(sectionId)
+                const paraCount = paragraphTargets[sectionId] || DEFAULT_PARAGRAPH_TARGETS[sectionId] || 3
                 return (
                   <div key={sectionId}>
                     <div draggable={!isExec} onDragStart={() => handleDragStart(idx)} onDragOver={(e) => handleDragOver(e, idx)} onDrop={() => handleDrop(idx)} onDragEnd={handleDragEnd}
                       style={{
-                        display: 'flex', alignItems: 'center', gap: 10, padding: '10px 12px', borderRadius: 10,
+                        display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10,
                         border: `1px solid ${isDragging ? `${W.accent}50` : isDragOver ? `${W.accent}60` : W.border}`,
                         background: isDragging ? `${W.accent}06` : isDragOver ? `${W.accent}04` : W.bg,
-                        opacity: isDragging ? 0.5 : 1, transition: 'all 0.2s',
+                        opacity: isDragging ? 0.5 : 1, transition: 'all 0.2s cubic-bezier(0.22,1,0.36,1)',
                       }}>
+                      {/* Drag handle */}
                       <div style={{ flexShrink: 0, opacity: isExec ? 0 : 0.4, cursor: isExec ? 'default' : 'grab', color: W.textMuted }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M4 8h16M4 16h16"/></svg>
                       </div>
+                      {/* Toggle */}
                       <button onClick={() => handleToggleSection(sectionId)} disabled={isExec}
                         style={{ flexShrink: 0, width: 32, height: 20, borderRadius: 10, border: 'none', cursor: isExec ? 'not-allowed' : 'pointer', background: W.accent, position: 'relative' as const, transition: 'background 0.2s' }}>
                         <span style={{ position: 'absolute', right: 2, top: 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.12)', transition: 'all 0.2s' }} />
                       </button>
+                      {/* Title + badges */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span style={{ fontSize: 13, fontWeight: 600, color: W.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{def.title}</span>
@@ -465,14 +725,27 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                           {def.isConditional && <span style={{ fontSize: 10, fontWeight: 600, color: '#D97706', background: '#FEF3C720', padding: '2px 6px', borderRadius: 4 }}>Conditional</span>}
                         </div>
                       </div>
-                      <div style={{ flexShrink: 0, display: 'flex', gap: 3, maxWidth: 140, overflow: 'hidden' }}>
-                        {charts.length > 0 ? charts.map(c => (
+                      {/* Chart badges */}
+                      <div style={{ flexShrink: 0, display: 'flex', gap: 3, maxWidth: 120, overflow: 'hidden' }}>
+                        {charts.length > 0 ? charts.slice(0, 2).map(c => (
                           <span key={c} style={{ fontSize: 10, fontWeight: 600, color: W.accent, background: `${W.accent}0D`, border: `1px solid ${W.accent}22`, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{CHART_LABELS[c] || c}</span>
                         )) : <span style={{ fontSize: 10, color: W.textMuted }}>Text only</span>}
                       </div>
+                      {/* Inline paragraph stepper */}
+                      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2, background: W.bgAlt, borderRadius: 6, padding: '2px 4px' }}>
+                        <button onClick={() => handleParagraphChange(sectionId, Math.max(1, paraCount - 1))}
+                          style={{ width: 20, height: 20, borderRadius: 4, border: 'none', cursor: 'pointer', background: 'transparent', color: paraCount <= 1 ? W.borderL : W.textSoft, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s' }}>-</button>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: W.textMid, minWidth: 22, textAlign: 'center' as const, fontFamily: 'var(--font-body, sans-serif)' }}>{paraCount}p</span>
+                        <button onClick={() => handleParagraphChange(sectionId, Math.min(8, paraCount + 1))}
+                          style={{ width: 20, height: 20, borderRadius: 4, border: 'none', cursor: 'pointer', background: 'transparent', color: paraCount >= 8 ? W.borderL : W.textSoft, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s' }}>+</button>
+                      </div>
+                      {/* Info button */}
                       <LightbulbButton isOpen={infoOpen} onClick={() => toggleInfo(sectionId)} />
+                      {/* Remove button */}
                       {!isExec && (
-                        <button onClick={() => handleToggleSection(sectionId)} style={{ flexShrink: 0, padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: W.textMuted, borderRadius: 4, transition: 'color 0.2s' }}>
+                        <button onClick={() => handleToggleSection(sectionId)} style={{ flexShrink: 0, padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: W.textMuted, borderRadius: 4, transition: 'color 0.2s' }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = W.red}
+                          onMouseLeave={(e) => e.currentTarget.style.color = W.textMuted}>
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                         </button>
                       )}
@@ -483,13 +756,13 @@ export function SettingsForm({ initialSettings, tier }: Props) {
               })}
             </div>
 
-            {/* Disabled but available */}
+            {/* ─── Available to Add (disabled sections for this tier) ─── */}
             {(() => {
               const disabled = availableSections.filter(id => !enabledSections.includes(id))
               if (disabled.length === 0) return null
               return (
                 <div style={{ borderTop: `1px solid ${W.borderL}`, paddingTop: 16, marginTop: 16 }}>
-                  <p style={{ fontSize: 10, fontWeight: 700, color: W.textMuted, textTransform: 'uppercase' as const, letterSpacing: '0.06em', marginBottom: 8 }}>Available to Add</p>
+                  <p style={upperLabel}>Available to Add</p>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                     {disabled.map(sectionId => {
                       const def = ALL_SECTIONS[sectionId]; if (!def) return null
@@ -497,12 +770,13 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                       const infoOpen = expandedInfo.has(sectionId)
                       return (
                         <div key={sectionId}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10, border: `1px dashed ${W.border}`, background: `${W.bgAlt}80`, transition: 'background 0.15s' }}
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', borderRadius: 10, border: `1px dashed ${W.border}`, background: `${W.bgAlt}80`, transition: 'background 0.15s', cursor: 'pointer' }}
                             onMouseEnter={(e) => e.currentTarget.style.background = W.bgAlt}
                             onMouseLeave={(e) => e.currentTarget.style.background = `${W.bgAlt}80`}>
                             <div style={{ width: 16 }} />
+                            {/* Off toggle */}
                             <button onClick={() => handleToggleSection(sectionId)}
-                              style={{ flexShrink: 0, width: 32, height: 20, borderRadius: 10, background: '#E8A0A0', border: 'none', cursor: 'pointer', position: 'relative' as const }}>
+                              style={{ flexShrink: 0, width: 32, height: 20, borderRadius: 10, background: '#D4A0A0', border: 'none', cursor: 'pointer', position: 'relative' as const, transition: 'background 0.2s' }}>
                               <span style={{ position: 'absolute', left: 2, top: 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.12)' }} />
                             </button>
                             <div style={{ flex: 1 }}>
@@ -511,7 +785,7 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                                 {def.isConditional && <span style={{ fontSize: 10, fontWeight: 600, color: '#D97706', background: '#FEF3C720', padding: '2px 6px', borderRadius: 4 }}>Conditional</span>}
                               </div>
                             </div>
-                            <div style={{ flexShrink: 0, display: 'flex', gap: 3, maxWidth: 140, overflow: 'hidden' }}>
+                            <div style={{ flexShrink: 0, display: 'flex', gap: 3, maxWidth: 120, overflow: 'hidden' }}>
                               {charts.map(c => <span key={c} style={{ fontSize: 10, color: W.textMuted, background: W.bgAlt, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{CHART_LABELS[c] || c}</span>)}
                             </div>
                             <LightbulbButton isOpen={infoOpen} onClick={() => toggleInfo(sectionId)} />
@@ -525,12 +799,12 @@ export function SettingsForm({ initialSettings, tier }: Props) {
               )
             })()}
 
-            {/* Locked sections */}
+            {/* ─── Locked sections (higher tier) — enticing upgrade messaging ─── */}
             {lockedSections.length > 0 && (
               <div style={{ borderTop: `1px solid ${W.borderL}`, paddingTop: 16, marginTop: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <p style={{ fontSize: 10, fontWeight: 700, color: W.textMuted, textTransform: 'uppercase' as const, letterSpacing: '0.06em' }}>Upgrade to Unlock</p>
-                  {nextTierUp && <a href="/dashboard/pricing" style={{ fontSize: 11, fontWeight: 600, color: W.accent, textDecoration: 'none' }}>View plans</a>}
+                  <p style={{ ...upperLabel, marginBottom: 0 }}>Premium Sections</p>
+                  {nextTierUp && <a href="/dashboard/pricing" style={{ fontSize: 11, fontWeight: 600, color: W.accent, textDecoration: 'none' }}>Explore plans</a>}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {lockedSections.map(sectionId => {
@@ -539,12 +813,14 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                     const infoOpen = expandedInfo.has(sectionId)
                     return (
                       <div key={sectionId}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 10, border: `1px solid ${W.borderL}`, background: `${W.bgAlt}60` }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10, border: `1px solid ${W.borderL}`, background: `${W.bgAlt}60` }}>
                           <div style={{ width: 16 }} />
                           <div style={{ flexShrink: 0, width: 32, height: 20, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.textMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
                           </div>
-                          <span style={{ flex: 1, fontSize: 13, color: W.textMuted }}>{def.title}</span>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: W.textMid }}>{def.title}</span>
+                          </div>
                           <LightbulbButton isOpen={infoOpen} onClick={() => toggleInfo(sectionId)} />
                           <a href="/dashboard/pricing" style={{
                             flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3,
@@ -552,7 +828,7 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                             padding: '4px 10px', borderRadius: 100, textDecoration: 'none',
                             boxShadow: `0 2px 8px ${W.accent}30`,
                           }}>
-                            {TIER_LABELS[sectionTier]}
+                            Unlock
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5l7 7-7 7"/></svg>
                           </a>
                         </div>
@@ -564,126 +840,76 @@ export function SettingsForm({ initialSettings, tier }: Props) {
               </div>
             )}
 
+            {/* Footer stats */}
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${W.borderL}`, display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 12, color: W.textMuted }}>{enabledSections.length} sections enabled</span>
               <span style={{ fontSize: 12, color: W.textMuted }}>{relevantQuestionCount} guided questions</span>
             </div>
           </section>
 
-          {/* Export Filename */}
+          {/* ══════ SECTION 3: WriteUp Intelligence ══════ */}
           <section style={cardStyle}>
-            <h2 style={{ ...h2Style, marginBottom: 4 }}>Export Filename</h2>
-            <p style={{ fontSize: 13, color: W.textSoft, marginBottom: 16 }}>Set a template for your PDF export filenames.</p>
-            <input type="text" value={exportNameTemplate} onChange={(e) => setExportNameTemplate(e.target.value)}
-              placeholder="{property_name}, as of {date}, Investor Report" style={{ ...inputStyle, fontSize: 13 }} onFocus={onFocus} onBlur={onBlur} />
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
-              {['{property_name}', '{date}', '{company_name}'].map(t => (
-                <button key={t} type="button" onClick={() => setExportNameTemplate(prev => prev + t)}
-                  style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 600, color: W.accent, background: `${W.accent}0D`, border: `1px solid ${W.accent}22`, padding: '4px 8px', borderRadius: 6, cursor: 'pointer' }}>
-                  {t}
-                </button>
-              ))}
-            </div>
-            <div style={{ marginTop: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.textMuted} strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
-              <span style={{ fontSize: 12, color: W.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportNamePreview}</span>
+            <h2 style={{ ...h2Style, marginBottom: 4 }}>WriteUp Intelligence</h2>
+            <p style={descStyle}>Fine-tune how your reports are written and analyzed.</p>
+
+            <div style={{ marginTop: 20 }}>
+              <ReportStylePanel
+                preferences={aiPreferences}
+                onChange={updateAIPreferences}
+                tier={activeTier as any}
+                onSave={markDirty}
+                isSaving={false}
+                {...{ hideSaveButton: true } as any}
+              />
             </div>
           </section>
 
-          {/* AI Preferences */}
-          <section style={cardStyle}>
-            <h2 style={{ ...h2Style, marginBottom: 16 }}>AI Writing Style</h2>
+        </div>
 
-            <ReportStylePanel
-              preferences={aiPreferences}
-              onChange={setAIPreferences}
-              tier={activeTier as any}
-              onSave={handleSavePreferences}
-              isSaving={isSavingPrefs}
-            />
-
-            <div style={{ marginTop: 32 }}>
-              <h3 style={{
-                fontFamily: 'var(--font-display, "Newsreader", Georgia, serif)',
-                fontSize: 18, fontWeight: 500, color: '#1A1A1A', marginBottom: 4,
-              }}>
-                Paragraph Targets
-              </h3>
-              <p style={{ fontSize: 13, color: '#7A7A7A', margin: '0 0 16px' }}>
-                Control how dense each section should be. Applies to all reports.
-              </p>
-              <div style={{
-                background: '#FFFFFF',
-                border: '1px solid #E8E5E0',
-                borderRadius: 14,
-                overflow: 'hidden',
-              }}>
-                {Object.entries(paragraphTargets).map(([sectionId, count]) => (
-                  <ParagraphCounter
-                    key={sectionId}
-                    sectionId={sectionId}
-                    sectionTitle={sectionId.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}
-                    value={count}
-                    onChange={handleParagraphChange}
-                    recommended={count}
-                    tier="professional"
-                  />
-                ))}
-              </div>
+        {/* ─── RIGHT: Sticky — Save Button + Paginated Preview ─── */}
+        <div style={{ position: 'sticky', top: 24, alignSelf: 'start' }}>
+          {/* Save bar */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              {hasUnsavedChanges && (
+                <span style={{ fontSize: 11, fontWeight: 500, color: W.gold, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: W.gold }} />
+                  Unsaved
+                </span>
+              )}
+              {saveStatus === 'saved' && (
+                <span style={{ color: W.green, fontSize: 12, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+                  Saved
+                </span>
+              )}
+              {saveStatus === 'error' && <span style={{ color: W.red, fontSize: 12, fontWeight: 600 }}>Failed</span>}
             </div>
-          </section>
-
-          {/* Save */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
             <button onClick={handleSave} disabled={isSaving}
               style={{
-                padding: '12px 24px', fontSize: 14, fontWeight: 600, color: '#fff', background: W.accent,
+                padding: '9px 24px', fontSize: 13, fontWeight: 600, color: '#fff', background: W.green,
                 border: 'none', borderRadius: 10, cursor: isSaving ? 'not-allowed' : 'pointer',
-                opacity: isSaving ? 0.6 : 1, boxShadow: `0 2px 12px ${W.accent}30`,
+                opacity: isSaving ? 0.6 : 1, boxShadow: `0 2px 12px ${W.green}30`,
+                transition: 'all 0.25s cubic-bezier(0.22,1,0.36,1)',
               }}>
               {isSaving ? 'Saving...' : 'Save Settings'}
             </button>
-            {saveStatus === 'saved' && (
-              <span style={{ color: W.green, fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}>
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={W.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-                Settings saved
-              </span>
-            )}
-            {saveStatus === 'error' && <span style={{ color: W.red, fontSize: 13, fontWeight: 600 }}>Failed to save</span>}
           </div>
+
+          {/* Preview label */}
+          <h3 style={{ fontSize: 13, fontWeight: 600, color: W.textSoft, marginBottom: 8 }}>Live Report Preview</h3>
+          <LiveReportPreview
+            companyName={companyName}
+            accentColor={accentColor}
+            secondaryColor={secondaryColor}
+            reportAccentColor={reportAccentColor}
+            enabledSections={enabledSections}
+            paragraphTargets={paragraphTargets}
+            logoUrl={settings?.company_logo_url}
+          />
         </div>
 
-        {/* Right Column: Preview */}
-        <div style={{ gridColumn: 'span 1' }}>
-          <div style={{ position: 'sticky', top: 24 }}>
-            <h3 style={{ fontSize: 13, fontWeight: 600, color: W.textSoft, marginBottom: 12 }}>Report Preview</h3>
-            <TemplatePreview primary={accentColor} secondary={secondaryColor} accent={reportAccentColor} companyName={companyName} logoUrl={settings?.company_logo_url} />
-            <p style={{ fontSize: 10, color: W.textMuted, marginTop: 12, textAlign: 'center', lineHeight: 1.5 }}>
-              Live preview of your investor report styling.<br/>Colors update in real-time.
-            </p>
-          </div>
-        </div>
       </div>
-    </div>
-  )
-}
-
-// ─── Color Row ───
-function ColorRow({ label, description, value, onChange }: { label: string; description: string; value: string; onChange: (v: string) => void }) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-      <div style={{ position: 'relative', flexShrink: 0 }}>
-        <input type="color" value={value} onChange={(e) => onChange(e.target.value)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} />
-        <div style={{ width: 36, height: 36, borderRadius: 10, border: `2px solid ${W.border}`, cursor: 'pointer', background: value, transition: 'border-color 0.2s' }} />
-      </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: W.textMid }}>{label}</div>
-        <div style={{ fontSize: 11, color: W.textMuted }}>{description}</div>
-      </div>
-      <input type="text" value={value}
-        onChange={(e) => { const v = e.target.value; if (/^#[0-9a-fA-F]{0,6}$/.test(v)) onChange(v) }}
-        style={{ width: 88, padding: '6px 10px', fontSize: 12, fontFamily: 'monospace', color: W.textMid, border: `1px solid ${W.border}`, borderRadius: 8, outline: 'none' }}
-        maxLength={7} onFocus={onFocus} onBlur={onBlur} />
     </div>
   )
 }

@@ -95,37 +95,10 @@ export function buildUserPreferencesBlock(prefs: {
 export function buildChartAccessBlock(sectionIds: string[], tier: string): string {
   return `
 <chart_output_rules>
-When a section needs a chart, output chart_data as JSON instead of HTML.
-Supported chart types: waterfall, horizontal_bar, vertical_bar, comparison_table, metric_cards.
-
-Example waterfall (NOI bridge):
-{
-  "chart_type": "waterfall",
-  "title": "NOI Bridge",
-  "data": {
-    "starting_value": 277826,
-    "ending_value": 113848,
-    "components": [
-      {"label": "Total Revenue", "value": 277826, "type": "start"},
-      {"label": "Operating Expenses", "value": -163978, "type": "decrease"},
-      {"label": "NOI", "value": 113848, "type": "end"}
-    ]
-  }
-}
-
-Example metric_cards (KPI row):
-{
-  "chart_type": "metric_cards",
-  "data": {
-    "cards": [
-      {"label": "Occupancy", "value": "91.4%", "change_pct": -0.9, "trend": "down"},
-      {"label": "NOI", "value": 113848, "change_pct": 25.8, "trend": "up", "format": "currency"},
-      {"label": "Revenue", "value": 277826, "change_pct": -1.2, "trend": "down", "format": "currency"}
-    ]
-  }
-}
-
-IMPORTANT: Output ONLY the JSON data. The backend renders the visual chart.
+Generate all charts as inline HTML in the "chart_html" field using the visualization templates.
+Set "chart_data" to null for all sections.
+Do NOT output chart_data JSON — the backend is not yet configured to render it.
+All visual charts must be complete, self-contained HTML with inline styles in chart_html.
 </chart_output_rules>`;
 }
 
