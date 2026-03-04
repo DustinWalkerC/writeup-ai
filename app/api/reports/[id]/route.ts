@@ -34,12 +34,46 @@ export async function PATCH(
 
   try {
     const body = await request.json();
+
+    // ── C1 FIX: Comprehensive allowedFields list ──
+    // Previously missing: generation_progress, generation_status_text,
+    // generation_started_at, validation_log, extracted_data,
+    // section_config, toast_dismissed_at, selected_sections
     const allowedFields = [
-      'name', 'status', 'questionnaire_answers', 'distribution_status',
-      'distribution_note', 'selected_month', 'selected_year',
-      'generated_sections', 'raw_analysis', 'generation_status',
-      'generation_completed_at', 'generation_config', 'input_mode',
-      'freeform_narrative', 'pipeline_stage', 'returned', 'return_note',
+      // Core report fields
+      'name',
+      'status',
+      'input_mode',
+      'freeform_narrative',
+
+      // Report configuration
+      'questionnaire_answers',
+      'distribution_status',
+      'distribution_note',
+      'selected_month',
+      'selected_year',
+      'selected_sections',
+      'section_config',
+
+      // Generation output
+      'generated_sections',
+      'raw_analysis',
+      'extracted_data',
+      'validation_log',
+      'generation_config',
+
+      // Generation lifecycle
+      'generation_status',
+      'generation_progress',
+      'generation_status_text',
+      'generation_started_at',
+      'generation_completed_at',
+
+      // Pipeline
+      'pipeline_stage',
+      'returned',
+      'return_note',
+      'toast_dismissed_at',
     ];
 
     const updateData: Record<string, unknown> = {};
@@ -51,6 +85,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
+    // Always set updated_at
+    updateData.updated_at = new Date().toISOString();
+
     const { data, error } = await supabase
       .from('reports')
       .update(updateData)
@@ -59,13 +96,24 @@ export async function PATCH(
       .select()
       .single();
 
-    if (error) throw error;
+    if (error) {
+      // ── Detailed error logging for debugging ──
+      console.error('[REPORTS PATCH] Failed:', {
+        reportId: id,
+        fieldsAttempted: Object.keys(updateData),
+        pgCode: error.code,
+        pgMessage: error.message,
+        pgDetails: error.details,
+        pgHint: error.hint,
+      });
+      throw error;
+    }
+
     return NextResponse.json({ success: true, report: data });
   } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Update failed' },
-      { status: 500 }
-    );
+    const message = error instanceof Error ? error.message : 'Update failed';
+    console.error('[REPORTS PATCH] Catch:', message);
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }
 

@@ -4,6 +4,21 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { C, PIPELINE_STAGES, STAGE_BADGE, STAGE_STAT_COLORS, type PipelineStage } from '@/lib/report-pipeline-tokens'
 
+/* ── Fallback for stages not in STAGE_BADGE (e.g. 'generating') ── */
+const GENERATING_BADGE = { color: '#00B7DB', bg: '#00B7DB10', border: '#00B7DB30' }
+const FALLBACK_BADGE = { color: '#7A7A7A', bg: '#F7F5F1', border: '#E8E5E0' }
+
+function getStageBadgeColors(stage: string) {
+  if (stage === 'generating') return GENERATING_BADGE
+  return STAGE_BADGE[stage as PipelineStage] || FALLBACK_BADGE
+}
+
+function getStageLabel(stage: string) {
+  if (stage === 'generating') return 'Generating'
+  const info = PIPELINE_STAGES.find(s => s.key === stage)
+  return info?.label || stage
+}
+
 /* ── Types ── */
 type DashboardData = {
   stats: {
@@ -28,6 +43,18 @@ type DashboardData = {
   currentPeriod: { month: string; year: number }
 }
 
+/* ── Responsive hook ── */
+function useIsMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false)
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < breakpoint)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [breakpoint])
+  return isMobile
+}
+
 /* ── Icon Components ── */
 function BuildingIcon({ color = C.textSoft, size = 18 }: { color?: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" /><path d="M9 22V12h6v10" /><path d="M8 6h.01M16 6h.01M12 6h.01M8 10h.01M16 10h.01M12 10h.01" /></svg>
@@ -50,25 +77,37 @@ function ArrowIcon({ color = C.accentText, size = 14 }: { color?: string; size?:
 function ChevronIcon({ color = C.textMuted, size = 16 }: { color?: string; size?: number }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6" /></svg>
 }
+function SpinnerIcon({ color = '#00B7DB', size = 14 }: { color?: string; size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 20 20" fill="none" style={{ animation: 'dashSpin 1s linear infinite' }}>
+      <circle cx="10" cy="10" r="8" stroke={`${color}25`} strokeWidth="2" />
+      <path d="M10 2a8 8 0 0 1 8 8" stroke={color} strokeWidth="2" strokeLinecap="round" />
+    </svg>
+  )
+}
 
 /* ── Stage Badge ── */
-function StageBadge({ stage }: { stage: PipelineStage }) {
-  const colors = STAGE_BADGE[stage]
-  const info = PIPELINE_STAGES.find(s => s.key === stage)
+function StageBadge({ stage }: { stage: string }) {
+  const colors = getStageBadgeColors(stage)
+  const label = getStageLabel(stage)
+  const isGenerating = stage === 'generating'
   return (
     <span style={{
       fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
       color: colors.color, background: colors.bg, border: `1px solid ${colors.border}`,
       borderRadius: 100, padding: '3px 10px', whiteSpace: 'nowrap',
+      display: 'inline-flex', alignItems: 'center', gap: 5,
     }}>
-      {info?.label || stage}
+      {isGenerating && <SpinnerIcon size={10} />}
+      {label}
     </span>
   )
 }
 
 /* ── Stage Hint ── */
-const STAGE_HINTS: Record<PipelineStage, string> = {
+const STAGE_HINTS: Record<string, string> = {
   draft: 'Not yet generated',
+  generating: 'Generating report...',
   in_review: 'Reviewing content',
   final_review: 'Pending approval',
   ready_to_send: 'Ready for investors',
@@ -76,16 +115,40 @@ const STAGE_HINTS: Record<PipelineStage, string> = {
 }
 
 /* ── Progress Bar ── */
-function ProgressBar({ stage }: { stage: PipelineStage }) {
-  const pcts: Record<string, number> = { draft: 10, in_review: 35, final_review: 55, ready_to_send: 80, sent: 100 }
+function ProgressBar({ stage, isMobile }: { stage: string; isMobile?: boolean }) {
+  const pcts: Record<string, number> = {
+    draft: 10,
+    generating: 25,
+    in_review: 35,
+    final_review: 55,
+    ready_to_send: 80,
+    sent: 100,
+  }
   const pct = pcts[stage] || 0
-  const color = stage === 'sent' || stage === 'ready_to_send' ? C.green : C.accent
+  const color = stage === 'sent' || stage === 'ready_to_send' ? C.green
+    : stage === 'generating' ? '#00B7DB'
+    : C.accent
+  const isGenerating = stage === 'generating'
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-      <div style={{ width: 100, height: 4, background: C.progressTrack, borderRadius: 100, overflow: 'hidden', marginBottom: 4 }}>
-        <div style={{ height: '100%', width: `${pct}%`, background: color, borderRadius: 100, transition: 'width 0.5s' }} />
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMobile ? 'flex-start' : 'center' }}>
+      <div style={{
+        width: isMobile ? '100%' : 100,
+        height: 4, background: C.progressTrack, borderRadius: 100, overflow: 'hidden', marginBottom: 4,
+      }}>
+        <div style={{
+          height: '100%',
+          width: isGenerating ? '40%' : `${pct}%`,
+          background: color, borderRadius: 100,
+          transition: 'width 0.5s',
+          ...(isGenerating ? {
+            animation: 'genPulse 2s ease-in-out infinite',
+          } : {}),
+        }} />
       </div>
-      <div style={{ fontSize: 12, color: C.textMuted, whiteSpace: 'nowrap' }}>{STAGE_HINTS[stage]}</div>
+      <div style={{ fontSize: 12, color: C.textMuted, whiteSpace: 'nowrap' }}>
+        {STAGE_HINTS[stage] || stage}
+      </div>
     </div>
   )
 }
@@ -103,8 +166,44 @@ function timeAgo(dateStr: string) {
 }
 
 /* ── Report Row ── */
-function ReportRow({ report }: { report: DashboardData['recentReports'][0] }) {
+function ReportRow({ report, isMobile }: { report: DashboardData['recentReports'][0]; isMobile: boolean }) {
   const [hover, setHover] = useState(false)
+
+  if (isMobile) {
+    return (
+      <Link
+        href={`/dashboard/reports?highlight=${report.id}&stage=${report.pipelineStage}`}
+        style={{ textDecoration: 'none', display: 'block', marginBottom: 8 }}
+      >
+        <div style={{
+          background: C.bg, border: `1px solid ${C.border}`,
+          borderRadius: 12, padding: '14px 16px',
+          display: 'flex', flexDirection: 'column', gap: 10,
+        }}>
+          {/* Top: Property name + badge */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
+            <div style={{ minWidth: 0, flex: 1 }}>
+              <div style={{
+                fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 15, fontWeight: 500,
+                color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3,
+              }}>
+                {report.propertyName}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: C.textSoft, marginTop: 2 }}>
+                <span>{report.month} {report.year}</span>
+                <span style={{ width: 3, height: 3, borderRadius: '50%', background: C.border }} />
+                <span style={{ color: C.textMuted }}>{timeAgo(report.updatedAt)}</span>
+              </div>
+            </div>
+            <StageBadge stage={report.pipelineStage} />
+          </div>
+
+          {/* Bottom: Progress bar full width */}
+          <ProgressBar stage={report.pipelineStage} isMobile />
+        </div>
+      </Link>
+    )
+  }
 
   return (
     <Link
@@ -118,7 +217,7 @@ function ReportRow({ report }: { report: DashboardData['recentReports'][0] }) {
           background: hover ? C.bgWarm : C.bg,
           border: `1px solid ${hover ? `${C.accent}30` : C.border}`,
           borderRadius: 12, padding: '12px 16px',
-          display: 'grid', gridTemplateColumns: '220px 130px auto 24px',
+          display: 'grid', gridTemplateColumns: '1fr 130px auto 24px',
           alignItems: 'center', gap: 16,
           transition: 'all 0.2s ease', cursor: 'pointer',
         }}
@@ -135,10 +234,10 @@ function ReportRow({ report }: { report: DashboardData['recentReports'][0] }) {
           </div>
         </div>
 
-        {/* Progress bar — centered */}
+        {/* Progress bar */}
         <ProgressBar stage={report.pipelineStage} />
 
-        {/* Badge — right aligned */}
+        {/* Badge */}
         <div style={{ justifySelf: 'end', display: 'flex', alignItems: 'center' }}>
           <StageBadge stage={report.pipelineStage} />
         </div>
@@ -152,11 +251,42 @@ function ReportRow({ report }: { report: DashboardData['recentReports'][0] }) {
   )
 }
 
+/* ── Stat Card ── */
+function StatCard({ label, value, subtitle, icon, valueColor }: {
+  label: string; value: number | string; subtitle: string;
+  icon: React.ReactNode; valueColor?: string
+}) {
+  return (
+    <div style={{
+      background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14,
+      padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      minWidth: 0,
+    }}>
+      <div style={{ minWidth: 0 }}>
+        <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase', color: C.textSoft, marginBottom: 4 }}>
+          {label}
+        </div>
+        <div style={{
+          fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 28, fontWeight: 500,
+          color: valueColor || C.text, lineHeight: 1,
+        }}>
+          {typeof value === 'number' ? value.toLocaleString() : value}
+        </div>
+        <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>{subtitle}</div>
+      </div>
+      <div style={{ width: 40, height: 40, borderRadius: 12, background: C.bgAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        {icon}
+      </div>
+    </div>
+  )
+}
+
 /* ═══ MAIN ═══ */
 export function DashboardContent({ userName }: { userName: string }) {
   const [data, setData] = useState<DashboardData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const isMobile = useIsMobile()
 
   useEffect(() => { fetchData() }, [])
 
@@ -188,64 +318,75 @@ export function DashboardContent({ userName }: { userName: string }) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+      {/* CSS for generating animations */}
+      <style>{`
+        @keyframes dashSpin { to { transform: rotate(360deg); } }
+        @keyframes genPulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
+      `}</style>
+
       {/* Header */}
       <div>
-        <h1 style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 28, fontWeight: 500, color: C.text, letterSpacing: '-0.015em' }}>
+        <h1 style={{
+          fontFamily: "var(--font-display, 'Newsreader', serif)",
+          fontSize: isMobile ? 24 : 28, fontWeight: 500, color: C.text, letterSpacing: '-0.015em',
+        }}>
           Welcome back, {firstName}
         </h1>
-        <p style={{ fontSize: 15, color: C.textSoft, marginTop: 4 }}>Here&#39;s what&#39;s happening with your portfolio</p>
+        <p style={{ fontSize: isMobile ? 14 : 15, color: C.textSoft, marginTop: 4 }}>
+          Here&#39;s what&#39;s happening with your portfolio
+        </p>
       </div>
 
-      {/* Stat Cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 14 }}>
-        <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase', color: C.textSoft, marginBottom: 4 }}>PROPERTIES</div>
-            <div style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 28, fontWeight: 500, color: C.text, lineHeight: 1 }}>{data.stats.totalProperties}</div>
-            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>{data.stats.totalUnits.toLocaleString()} total units</div>
-          </div>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: C.bgAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <BuildingIcon color={C.textSoft} size={18} />
-          </div>
-        </div>
-        <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase', color: C.textSoft, marginBottom: 4 }}>REPORTS THIS MONTH</div>
-            <div style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 28, fontWeight: 500, color: C.accent, lineHeight: 1 }}>{data.stats.reportsThisMonth}</div>
-            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>{data.currentPeriod.month} {data.currentPeriod.year}</div>
-          </div>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: C.bgAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <DocIcon color={C.textSoft} size={18} />
-          </div>
-        </div>
-        <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase', color: C.textSoft, marginBottom: 4 }}>IN PIPELINE</div>
-            <div style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 28, fontWeight: 500, color: '#B45309', lineHeight: 1 }}>{data.stats.inPipeline}</div>
-            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>Across all stages</div>
-          </div>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: C.bgAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ClockIcon color={C.textSoft} size={18} />
-          </div>
-        </div>
-        <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase', color: C.textSoft, marginBottom: 4 }}>DELIVERED</div>
-            <div style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 28, fontWeight: 500, color: C.green, lineHeight: 1 }}>{data.stats.delivered}</div>
-            <div style={{ fontSize: 13, color: C.textMuted, marginTop: 4 }}>All time</div>
-          </div>
-          <div style={{ width: 40, height: 40, borderRadius: 12, background: C.bgAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <CheckIcon color={C.textSoft} size={18} />
-          </div>
-        </div>
+      {/* Stat Cards — 2x2 on mobile, 4-col on desktop */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? 'repeat(2, 1fr)' : 'repeat(4, 1fr)',
+        gap: isMobile ? 10 : 14,
+      }}>
+        <StatCard
+          label="Properties"
+          value={data.stats.totalProperties}
+          subtitle={`${data.stats.totalUnits.toLocaleString()} total units`}
+          icon={<BuildingIcon color={C.textSoft} size={18} />}
+        />
+        <StatCard
+          label="Reports This Month"
+          value={data.stats.reportsThisMonth}
+          subtitle={`${data.currentPeriod.month} ${data.currentPeriod.year}`}
+          icon={<DocIcon color={C.textSoft} size={18} />}
+          valueColor={C.accent}
+        />
+        <StatCard
+          label="In Pipeline"
+          value={data.stats.inPipeline}
+          subtitle="Across all stages"
+          icon={<ClockIcon color={C.textSoft} size={18} />}
+          valueColor="#B45309"
+        />
+        <StatCard
+          label="Delivered"
+          value={data.stats.delivered}
+          subtitle="All time"
+          icon={<CheckIcon color={C.textSoft} size={18} />}
+          valueColor={C.green}
+        />
       </div>
 
-      {/* Content Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: 20 }}>
+      {/* Content Grid — stacked on mobile, side-by-side on desktop */}
+      <div style={{
+        display: 'grid',
+        gridTemplateColumns: isMobile ? '1fr' : '1fr 320px',
+        gap: 20,
+      }}>
         {/* Recent Reports */}
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
-            <h2 style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 18, fontWeight: 500, color: C.text, margin: 0 }}>Recent Reports</h2>
+            <h2 style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 18, fontWeight: 500, color: C.text, margin: 0 }}>
+              Recent Reports
+            </h2>
             <Link href="/dashboard/reports" style={{ fontSize: 14, color: C.accentText, textDecoration: 'none', fontWeight: 500, display: 'flex', alignItems: 'center', gap: 4 }}>
               View all <ArrowIcon color={C.accentText} size={14} />
             </Link>
@@ -255,14 +396,14 @@ export function DashboardContent({ userName }: { userName: string }) {
               No reports yet. Create your first one!
             </div>
           ) : (
-            data.recentReports.map((r) => <ReportRow key={r.id} report={r} />)
+            data.recentReports.map((r) => <ReportRow key={r.id} report={r} isMobile={isMobile} />)
           )}
         </div>
 
         {/* Right Column */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
           {/* Quick Actions */}
-          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20 }}>
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: isMobile ? 16 : 20 }}>
             <h3 style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 16, fontWeight: 500, color: C.text, marginBottom: 14 }}>Quick Actions</h3>
             <Link href="/dashboard/reports/new" style={{
               width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
@@ -283,7 +424,7 @@ export function DashboardContent({ userName }: { userName: string }) {
           </div>
 
           {/* Pipeline Summary */}
-          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20 }}>
+          <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: isMobile ? 16 : 20 }}>
             <h3 style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 16, fontWeight: 500, color: C.text, marginBottom: 14 }}>Pipeline</h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
               {PIPELINE_STAGES.map((stage) => {
@@ -313,7 +454,7 @@ export function DashboardContent({ userName }: { userName: string }) {
 
           {/* Needs Report */}
           {data.propertiesNeedingReports.length > 0 && (
-            <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: 20 }}>
+            <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: isMobile ? 16 : 20 }}>
               <div style={{ fontSize: 11, fontWeight: 600, letterSpacing: '0.05em', textTransform: 'uppercase', color: C.textSoft, marginBottom: 12 }}>
                 NEEDS {data.currentPeriod.month.toUpperCase()} REPORT:
               </div>

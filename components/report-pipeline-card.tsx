@@ -11,6 +11,89 @@ import {
 import { PipelineIcons, getIcon } from '@/components/pipeline-icons';
 import ReturnNotePopover from '@/components/return-note-popover';
 
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE CSS — injected once per card instance
+   Reflows the 6-col list grid into a stacked card on ≤768px
+   and wraps grid card actions.  NO color overrides.
+   ═══════════════════════════════════════════════════════════════ */
+const CARD_MOBILE_CSS = `
+@media (max-width: 768px) {
+  /* ── Grid card ── */
+  .pc-grid-wrap {
+    min-width: 0 !important;
+  }
+  .pc-grid-header {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+  }
+  .pc-grid-actions {
+    flex-wrap: wrap !important;
+  }
+  .pc-grid-primary {
+    flex: 1 1 0% !important;
+    min-width: 0 !important;
+    font-size: 13px !important;
+    padding: 9px 12px !important;
+  }
+  .pc-grid-secondary {
+    padding: 9px 10px !important;
+    font-size: 13px !important;
+  }
+
+  /* ── List card: reflow from 6-col grid to stacked ── */
+  .pc-list-row {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    padding: 14px 16px !important;
+    grid-template-columns: unset !important;
+  }
+
+  /* Row 1: info — full width */
+  .pc-list-info {
+    min-width: 0 !important;
+    width: 100% !important;
+  }
+
+  /* Row 2: progress bar — full width */
+  .pc-list-progress {
+    width: 100% !important;
+  }
+
+  /* Row 3: stage badge — left aligned */
+  .pc-list-stage {
+    justify-self: flex-start !important;
+    justify-content: flex-start !important;
+  }
+
+  /* Row 4: action button + view + more — horizontal row */
+  .pc-list-controls {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+    width: 100% !important;
+    align-items: center !important;
+  }
+  .pc-list-action-col {
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+  .pc-list-view-btn {
+    flex-shrink: 0 !important;
+  }
+
+  /* Return note row */
+  .pc-return-row {
+    flex-direction: column !important;
+    gap: 8px !important;
+  }
+  .pc-return-actions {
+    display: flex !important;
+    gap: 8px !important;
+  }
+}
+`;
+
 interface CardProps {
   report: PipelineReport;
   stackCount?: number | null;
@@ -49,7 +132,7 @@ async function deleteReportApi(reportId: string): Promise<boolean> {
 }
 
 const PRIMARY_TARGETS: Record<PipelineStage, PipelineStage | null> = {
-  draft: 'in_review', in_review: 'final_review', final_review: 'ready_to_send', ready_to_send: 'sent', sent: null,
+  generating: 'in_review', draft: 'in_review', in_review: 'final_review', final_review: 'ready_to_send', ready_to_send: 'sent', sent: null,
 };
 
 // -------------------------------------------------------------------
@@ -70,7 +153,6 @@ function MoreMenu({ report, onStageChange, onReturn }: { report: PipelineReport;
 
   useEffect(() => { setMounted(true); }, []);
 
-  // Position the dropdown
   const updatePosition = useCallback(() => {
     if (!btnRef.current) return;
     const rect = btnRef.current.getBoundingClientRect();
@@ -88,7 +170,6 @@ function MoreMenu({ report, onStageChange, onReturn }: { report: PipelineReport;
     };
   }, [open, updatePosition]);
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -100,7 +181,6 @@ function MoreMenu({ report, onStageChange, onReturn }: { report: PipelineReport;
     return () => document.removeEventListener('mousedown', handler);
   }, [open]);
 
-  // Close on escape
   useEffect(() => {
     if (!open) return;
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') { setOpen(false); setView('main'); } };
@@ -144,7 +224,6 @@ function MoreMenu({ report, onStageChange, onReturn }: { report: PipelineReport;
         overflow: 'hidden',
       }}
     >
-      {/* Main menu */}
       {view === 'main' && (
         <div style={{ padding: 6 }}>
           <button onClick={() => { close(); router.push(`/dashboard/reports/${report.id}`); }} style={itemStyle}
@@ -177,7 +256,6 @@ function MoreMenu({ report, onStageChange, onReturn }: { report: PipelineReport;
         </div>
       )}
 
-      {/* Status picker */}
       {view === 'status' && (
         <div style={{ padding: 6 }}>
           <button onClick={() => setView('main')} style={{ ...itemStyle, fontSize: 13, color: C.textMuted, padding: '8px 14px', gap: 6 }}>
@@ -201,7 +279,6 @@ function MoreMenu({ report, onStageChange, onReturn }: { report: PipelineReport;
         </div>
       )}
 
-      {/* Delete confirmation */}
       {view === 'delete' && (
         <div style={{ padding: 16 }}>
           <div style={{ width: 40, height: 40, borderRadius: 10, background: '#FEF2F2', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 12px' }}>
@@ -285,20 +362,22 @@ export function PipelineCardGrid({ report: r, stackCount, versionLabel, onStageC
 
   return (
     <div
+      className="pc-grid-wrap"
       onMouseEnter={() => setHover(true)} onMouseLeave={() => setHover(false)}
       style={{
         background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14,
-        overflow: 'visible', minWidth: 300,
+        overflow: 'visible', minWidth: 0,
         transition: 'all 0.3s cubic-bezier(0.22,1,0.36,1)',
         transform: hover ? 'translateY(-2px)' : 'none',
         boxShadow: hover ? '0 8px 32px rgba(0,0,0,0.06)' : 'none',
       }}
     >
+      <style>{CARD_MOBILE_CSS}</style>
       <div style={{ padding: '18px 20px 16px' }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
+        <div className="pc-grid-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 4 }}>
           <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
             <h3 style={{ fontFamily: "'Newsreader', serif", fontSize: 17, fontWeight: 500, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3, margin: 0 }}>{r.property_name}</h3>
-            {versionLabel && <span style={{ fontSize: 10, fontWeight: 700, color: C.accentText, background: `${C.accentAction}10`, borderRadius: 4, padding: '2px 6px' }}>{versionLabel}</span>}
+            {versionLabel && <span style={{ fontSize: 10, fontWeight: 700, color: C.accentText, background: `${C.accentAction}10`, borderRadius: 4, padding: '2px 6px', flexShrink: 0 }}>{versionLabel}</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0, marginLeft: 10 }}>
             {r.returned && r.return_note && <ReturnNotePopover note={r.return_note} />}
@@ -321,16 +400,18 @@ export function PipelineCardGrid({ report: r, stackCount, versionLabel, onStageC
         </div>
 
         {showReturn && (
-          <div style={{ display: 'flex', gap: 8, marginBottom: 12, padding: '10px 12px', background: C.bgAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
-            <input value={returnNote} onChange={e => setReturnNote(e.target.value)} placeholder="Add a note..." style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 14, color: C.text, fontFamily: 'inherit' }} />
-            <button onClick={handleReturn} disabled={loading} style={{ padding: '6px 12px', fontSize: 14, fontWeight: 600, color: '#fff', background: C.retOrg, border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap', opacity: loading ? 0.6 : 1 }}>{loading ? 'Returning...' : 'Return'}</button>
-            <button onClick={() => { setShowReturn(false); setReturnNote(''); }} style={{ padding: '6px 10px', fontSize: 14, color: C.textSoft, background: 'transparent', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>Cancel</button>
+          <div className="pc-return-row" style={{ display: 'flex', gap: 8, marginBottom: 12, padding: '10px 12px', background: C.bgAlt, borderRadius: 10, border: `1px solid ${C.border}` }}>
+            <input value={returnNote} onChange={e => setReturnNote(e.target.value)} placeholder="Add a note..." style={{ flex: 1, border: 'none', background: 'transparent', outline: 'none', fontSize: 14, color: C.text, fontFamily: 'inherit', minWidth: 0 }} />
+            <div className="pc-return-actions" style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleReturn} disabled={loading} style={{ padding: '6px 12px', fontSize: 14, fontWeight: 600, color: '#fff', background: C.retOrg, border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap', opacity: loading ? 0.6 : 1 }}>{loading ? 'Returning...' : 'Return'}</button>
+              <button onClick={() => { setShowReturn(false); setReturnNote(''); }} style={{ padding: '6px 10px', fontSize: 14, color: C.textSoft, background: 'transparent', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>Cancel</button>
+            </div>
           </div>
         )}
 
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap' }}>
+        <div className="pc-grid-actions" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap' }}>
           {act ? (
-            <button onClick={handlePrimary} disabled={loading} onMouseEnter={() => setActionHover(true)} onMouseLeave={() => setActionHover(false)}
+            <button className="pc-grid-primary" onClick={handlePrimary} disabled={loading} onMouseEnter={() => setActionHover(true)} onMouseLeave={() => setActionHover(false)}
               style={{ flex: '1 1 auto', minWidth: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, padding: '10px 16px', fontSize: 14, fontWeight: 600, color: '#fff', background: actionHover ? C.accentHover : C.accentAction, border: 'none', borderRadius: 10, cursor: 'pointer', boxShadow: `0 2px 10px ${C.accentAction}25`, transition: 'background 0.25s', whiteSpace: 'nowrap', opacity: loading ? 0.6 : 1 }}>
               {getIcon(act.icon, '#fff', 15)} {act.label}
             </button>
@@ -340,14 +421,13 @@ export function PipelineCardGrid({ report: r, stackCount, versionLabel, onStageC
             </div>
           )}
 
-          {/* Ready to Send → Download button; all others → View button */}
           {isReadyToSend ? (
-            <button onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)}
+            <button className="pc-grid-secondary" onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 14px', fontSize: 14, fontWeight: 600, color: viewHover ? '#fff' : C.accentAction, background: viewHover ? C.accentAction : `${C.accentAction}08`, border: `1px solid ${viewHover ? C.accentAction : `${C.accentAction}30`}`, borderRadius: 10, cursor: 'pointer', transition: 'all 0.2s', flexShrink: 0, whiteSpace: 'nowrap' }}>
               <PipelineIcons.dl color={viewHover ? '#fff' : C.accentAction} size={15} /> Download
             </button>
           ) : (
-            <button onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)}
+            <button className="pc-grid-secondary" onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)}
               style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '10px 14px', fontSize: 14, fontWeight: 500, color: viewHover ? C.accentAction : C.textMid, background: viewHover ? `${C.accentAction}08` : C.bgAlt, border: `1px solid ${viewHover ? `${C.accentAction}30` : C.borderL}`, borderRadius: 10, cursor: 'pointer', transition: 'background 0.2s, color 0.2s, border-color 0.2s', flexShrink: 0, whiteSpace: 'nowrap' }}>
               <PipelineIcons.eye color={viewHover ? C.accentAction : C.textSoft} size={15} /> View
             </button>
@@ -361,7 +441,7 @@ export function PipelineCardGrid({ report: r, stackCount, versionLabel, onStageC
 }
 
 // -------------------------------------------------------------------
-// LIST CARD
+// LIST CARD — responsive: 6-col grid on desktop, stacked on mobile
 // -------------------------------------------------------------------
 export function PipelineCardList({ report: r, stackCount, versionLabel, onStageChange, showHint = true }: CardProps & { showHint?: boolean }) {
   const router = useRouter();
@@ -396,10 +476,12 @@ export function PipelineCardList({ report: r, stackCount, versionLabel, onStageC
   };
 
   return (
-    <div>
+    <div style={{ minWidth: 0 }}>
+      <style>{CARD_MOBILE_CSS}</style>
       <style>{`.pipeline-list-row:hover { background: ${C.bgWarm} !important; }`}</style>
+
       <div
-        className="pipeline-list-row"
+        className="pipeline-list-row pc-list-row"
         style={{
           background: C.bg,
           border: `1px solid ${C.border}`, borderRadius: 12,
@@ -409,11 +491,12 @@ export function PipelineCardList({ report: r, stackCount, versionLabel, onStageC
           transition: 'background 0.2s',
         }}
       >
-        <div style={{ minWidth: 0 }}>
+        {/* Col 1: Name + period */}
+        <div className="pc-list-info" style={{ minWidth: 0 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 2 }}>
             <h3 style={{ fontFamily: "'Newsreader', serif", fontSize: 16, fontWeight: 500, color: C.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.3, margin: 0 }}>{r.property_name}</h3>
-            {versionLabel && <span style={{ fontSize: 10, fontWeight: 700, color: C.accentText, background: `${C.accentAction}10`, borderRadius: 4, padding: '1px 5px' }}>{versionLabel}</span>}
-            {stackCount && <span style={{ fontSize: 10, fontWeight: 700, color: C.accentText, background: `${C.accentAction}10`, borderRadius: 100, padding: '2px 7px', display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer' }}><PipelineIcons.layers color={C.accentText} size={9} /> {stackCount}</span>}
+            {versionLabel && <span style={{ fontSize: 10, fontWeight: 700, color: C.accentText, background: `${C.accentAction}10`, borderRadius: 4, padding: '1px 5px', flexShrink: 0 }}>{versionLabel}</span>}
+            {stackCount && <span style={{ fontSize: 10, fontWeight: 700, color: C.accentText, background: `${C.accentAction}10`, borderRadius: 100, padding: '2px 7px', display: 'flex', alignItems: 'center', gap: 3, cursor: 'pointer', flexShrink: 0 }}><PipelineIcons.layers color={C.accentText} size={9} /> {stackCount}</span>}
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, color: C.textSoft }}>
             <span>{r.period}</span>
@@ -422,52 +505,60 @@ export function PipelineCardList({ report: r, stackCount, versionLabel, onStageC
           </div>
         </div>
 
-        <div>
+        {/* Col 2: Progress bar */}
+        <div className="pc-list-progress">
           <div style={{ height: 4, background: C.progressTrack, borderRadius: 100, overflow: 'hidden', marginBottom: showHint ? 4 : 0 }}>
             <div style={{ height: '100%', borderRadius: 100, background: idx >= 4 ? C.green : C.accent, width: `${pct}%`, transition: 'width 0.5s' }} />
           </div>
           {showHint && <div style={{ fontSize: 13, color: C.textMuted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{stg.hint}</div>}
         </div>
 
-        <div style={{ display: 'flex', gap: 10, alignItems: 'center', justifySelf: 'end' }}>
+        {/* Col 3: Stage badge */}
+        <div className="pc-list-stage" style={{ display: 'flex', gap: 10, alignItems: 'center', justifySelf: 'end' }}>
           {r.returned && r.return_note && <ReturnNotePopover note={r.return_note} />}
           <StagePill stage={r.pipeline_stage} />
         </div>
 
-        <div>
-          {act ? (
-            <button onClick={handlePrimary} disabled={loading} onMouseEnter={() => setActionHover(true)} onMouseLeave={() => setActionHover(false)}
-              style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 12px', fontSize: 14, fontWeight: 600, color: '#fff', background: actionHover ? C.accentHover : C.accentAction, border: 'none', borderRadius: 8, cursor: 'pointer', transition: 'background 0.25s', whiteSpace: 'nowrap', opacity: loading ? 0.6 : 1 }}>
-              {getIcon(act.icon, '#fff', 14)} {act.label}
+        {/* Cols 4-6: Action + View + More
+            On desktop these are 3 separate grid columns (display: contents).
+            On mobile the wrapper becomes flex row so they sit side-by-side. */}
+        <div className="pc-list-controls" style={{ display: 'contents' }}>
+          <div className="pc-list-action-col">
+            {act ? (
+              <button className="pc-list-primary" onClick={handlePrimary} disabled={loading} onMouseEnter={() => setActionHover(true)} onMouseLeave={() => setActionHover(false)}
+                style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 12px', fontSize: 14, fontWeight: 600, color: '#fff', background: actionHover ? C.accentHover : C.accentAction, border: 'none', borderRadius: 8, cursor: 'pointer', transition: 'background 0.25s', whiteSpace: 'nowrap', opacity: loading ? 0.6 : 1 }}>
+                {getIcon(act.icon, '#fff', 14)} {act.label}
+              </button>
+            ) : (
+              <span style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 12px', fontSize: 14, fontWeight: 600, color: C.greenBtn, background: `${C.greenBtn}08`, borderRadius: 8, border: `1px solid ${C.greenBtn}18`, whiteSpace: 'nowrap' }}>
+                <PipelineIcons.check color={C.greenBtn} size={14} /> Delivered
+              </span>
+            )}
+          </div>
+
+          {isReadyToSend ? (
+            <button className="pc-list-view-btn" onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)} title="Download Report"
+              style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', background: viewHover ? `${C.accentAction}15` : `${C.accentAction}08`, border: `1px solid ${viewHover ? `${C.accentAction}40` : `${C.accentAction}20`}`, borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s, border-color 0.2s', flexShrink: 0 }}>
+              <PipelineIcons.dl color={viewHover ? C.accentAction : C.accentText} size={16} />
             </button>
           ) : (
-            <span style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, padding: '8px 12px', fontSize: 14, fontWeight: 600, color: C.greenBtn, background: `${C.greenBtn}08`, borderRadius: 8, border: `1px solid ${C.greenBtn}18`, whiteSpace: 'nowrap' }}>
-              <PipelineIcons.check color={C.greenBtn} size={14} /> Delivered
-            </span>
+            <button className="pc-list-view-btn" onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)} title="View Report"
+              style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', background: viewHover ? `${C.accentAction}08` : C.bgAlt, border: `1px solid ${viewHover ? `${C.accentAction}30` : C.borderL}`, borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s, border-color 0.2s', flexShrink: 0 }}>
+              <PipelineIcons.eye color={viewHover ? C.accentAction : C.textSoft} size={16} />
+            </button>
           )}
+
+          <MoreMenu report={r} onStageChange={onStageChange} onReturn={r.pipeline_stage === 'final_review' ? () => setShowReturn(true) : undefined} />
         </div>
-
-        {/* Ready to Send → Download button; all others → View button */}
-        {isReadyToSend ? (
-          <button onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)} title="Download Report"
-            style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', background: viewHover ? `${C.accentAction}15` : `${C.accentAction}08`, border: `1px solid ${viewHover ? `${C.accentAction}40` : `${C.accentAction}20`}`, borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s, border-color 0.2s' }}>
-            <PipelineIcons.dl color={viewHover ? C.accentAction : C.accentText} size={16} />
-          </button>
-        ) : (
-          <button onClick={() => router.push(`/dashboard/reports/${r.id}`)} onMouseEnter={() => setViewHover(true)} onMouseLeave={() => setViewHover(false)} title="View Report"
-            style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', background: viewHover ? `${C.accentAction}08` : C.bgAlt, border: `1px solid ${viewHover ? `${C.accentAction}30` : C.borderL}`, borderRadius: 8, cursor: 'pointer', transition: 'background 0.2s, border-color 0.2s' }}>
-            <PipelineIcons.eye color={viewHover ? C.accentAction : C.textSoft} size={16} />
-          </button>
-        )}
-
-        <MoreMenu report={r} onStageChange={onStageChange} onReturn={r.pipeline_stage === 'final_review' ? () => setShowReturn(true) : undefined} />
       </div>
 
       {showReturn && (
-        <div style={{ display: 'flex', gap: 8, marginTop: -1, padding: '10px 20px', background: C.bgAlt, border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 12px 12px' }}>
-          <input value={returnNote} onChange={e => setReturnNote(e.target.value)} placeholder="Add a note for the reviewer..." style={{ flex: 1, border: `1px solid ${C.border}`, background: C.bg, borderRadius: 8, padding: '8px 12px', outline: 'none', fontSize: 14, color: C.text, fontFamily: 'inherit' }} />
-          <button onClick={handleReturn} disabled={loading} style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, color: '#fff', background: C.retOrg, border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap', opacity: loading ? 0.6 : 1 }}>{loading ? 'Returning...' : 'Return'}</button>
-          <button onClick={() => { setShowReturn(false); setReturnNote(''); }} style={{ padding: '8px 12px', fontSize: 14, color: C.textSoft, background: 'transparent', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>Cancel</button>
+        <div className="pc-return-row" style={{ display: 'flex', gap: 8, marginTop: -1, padding: '10px 20px', background: C.bgAlt, border: `1px solid ${C.border}`, borderTop: 'none', borderRadius: '0 0 12px 12px' }}>
+          <input value={returnNote} onChange={e => setReturnNote(e.target.value)} placeholder="Add a note for the reviewer..." style={{ flex: 1, border: `1px solid ${C.border}`, background: C.bg, borderRadius: 8, padding: '8px 12px', outline: 'none', fontSize: 14, color: C.text, fontFamily: 'inherit', minWidth: 0 }} />
+          <div className="pc-return-actions" style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handleReturn} disabled={loading} style={{ padding: '8px 16px', fontSize: 14, fontWeight: 600, color: '#fff', background: C.retOrg, border: 'none', borderRadius: 8, cursor: 'pointer', whiteSpace: 'nowrap', opacity: loading ? 0.6 : 1 }}>{loading ? 'Returning...' : 'Return'}</button>
+            <button onClick={() => { setShowReturn(false); setReturnNote(''); }} style={{ padding: '8px 12px', fontSize: 14, color: C.textSoft, background: 'transparent', border: 'none', cursor: 'pointer', whiteSpace: 'nowrap' }}>Cancel</button>
+          </div>
         </div>
       )}
     </div>

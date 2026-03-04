@@ -27,23 +27,89 @@ type Props = { initialSettings: UserSettings | null; tier: string }
 // ═══════════════════════════════════════════════════════════
 // WCAG AA Compliant Design Tokens
 // ═══════════════════════════════════════════════════════════
-// All text colors verified against #FFFFFF background:
-//   text    #1A1A1A = 16.6:1 ✓
-//   textMid #4A4A4A = 9.7:1  ✓
-//   textSoft #5A5A5A = 7.0:1 ✓ (upgraded from #7A7A7A=4.5:1)
-//   textMuted #6B6B6B = 5.5:1 ✓ (upgraded from #A3A3A3=2.6:1 FAIL)
-//   labelMuted #808080 = 4.6:1 ✓ (for large text / uppercase labels only)
 
 const W = {
   accent: '#00B7DB', accentD: '#1D98B1',
   bg: '#FFFFFF', bgAlt: '#F7F5F1', bgWarm: '#FAF9F7',
   text: '#1A1A1A', textMid: '#4A4A4A',
-  textSoft: '#5A5A5A',   // ← upgraded for AA compliance (was #7A7A7A)
-  textMuted: '#6B6B6B',  // ← upgraded for AA compliance (was #A3A3A3)
-  labelMuted: '#808080',  // for uppercase labels (large text AA = 3:1)
+  textSoft: '#5A5A5A',
+  textMuted: '#6B6B6B',
+  labelMuted: '#808080',
   border: '#E8E5E0', borderL: '#F0EDE8',
   green: '#008A3E', red: '#CC0000', gold: '#C8B88A',
 }
+
+// ═══════════════════════════════════════════════════════════
+// Mobile Responsive CSS
+// ═══════════════════════════════════════════════════════════
+
+const SETTINGS_MOBILE_CSS = `
+@media (max-width: 900px) {
+  .settings-split-layout {
+    grid-template-columns: 1fr !important;
+  }
+  .settings-preview-col {
+    position: relative !important;
+    top: 0 !important;
+  }
+}
+@media (max-width: 768px) {
+  .settings-preview-col {
+    display: none !important;
+  }
+  .settings-page-wrap {
+    padding-bottom: 72px !important;
+  }
+  .settings-section-row {
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    padding: 8px 10px !important;
+  }
+  .settings-section-row .settings-chart-badges {
+    display: none !important;
+  }
+  .settings-section-row .settings-para-stepper {
+    margin-left: auto !important;
+  }
+  .settings-color-hex {
+    width: 72px !important;
+    font-size: 11px !important;
+  }
+  .settings-token-row {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .settings-token-btn {
+    font-size: 10px !important;
+    padding: 3px 6px !important;
+  }
+  .settings-save-bar-mobile {
+    position: fixed !important;
+    bottom: 0 !important;
+    left: 0 !important;
+    right: 0 !important;
+    background: #fff !important;
+    border-top: 1px solid #E8E5E0 !important;
+    padding: 12px 20px !important;
+    z-index: 30 !important;
+    box-shadow: 0 -4px 20px rgba(0,0,0,0.06) !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+  }
+  .settings-color-row {
+    gap: 8px !important;
+  }
+  .settings-color-label {
+    display: none !important;
+  }
+  .settings-filename-preview {
+    max-width: 100% !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+}
+`
 
 const cardStyle: React.CSSProperties = { background: W.bg, border: `1px solid ${W.border}`, borderRadius: 14, padding: 24 }
 const h2Style: React.CSSProperties = { fontFamily: 'var(--font-display, Georgia, serif)', fontSize: 18, fontWeight: 500, color: W.text, margin: 0 }
@@ -54,6 +120,7 @@ const inputStyle: React.CSSProperties = {
   fontFamily: 'var(--font-body, sans-serif)',
   background: W.bg, border: `1px solid ${W.border}`, borderRadius: 10,
   outline: 'none', transition: 'all 0.25s cubic-bezier(0.22,1,0.36,1)',
+  boxSizing: 'border-box' as const,
 }
 const upperLabel: React.CSSProperties = {
   display: 'block', fontSize: 10, fontWeight: 700, color: W.labelMuted,
@@ -138,28 +205,27 @@ function LightbulbButton({ isOpen, onClick }: { isOpen: boolean; onClick: () => 
 
 function ColorRow({ label, description, value, onChange }: { label: string; description: string; value: string; onChange: (v: string) => void }) {
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+    <div className="settings-color-row" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
       <div style={{ position: 'relative', flexShrink: 0 }}>
         <input type="color" value={value} onChange={(e) => onChange(e.target.value)} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }} />
         <div style={{ width: 36, height: 36, borderRadius: 10, border: `2px solid ${W.border}`, cursor: 'pointer', background: value, transition: 'border-color 0.2s' }} />
       </div>
-      <div style={{ flex: 1, minWidth: 0 }}>
+      <div className="settings-color-label" style={{ flex: 1, minWidth: 0 }}>
         <div style={{ fontSize: 13, fontWeight: 600, color: W.textMid }}>{label}</div>
         <div style={{ fontSize: 11, color: W.textSoft }}>{description}</div>
       </div>
-      <input type="text" value={value}
+      <input className="settings-color-hex" type="text" value={value}
         onChange={(e) => { const v = e.target.value; if (/^#[0-9a-fA-F]{0,6}$/.test(v)) onChange(v) }}
-        style={{ width: 88, padding: '6px 10px', fontSize: 12, fontFamily: 'monospace', color: W.textMid, border: `1px solid ${W.border}`, borderRadius: 8, outline: 'none' }}
+        style={{ width: 88, padding: '6px 10px', fontSize: 12, fontFamily: 'monospace', color: W.textMid, border: `1px solid ${W.border}`, borderRadius: 8, outline: 'none', boxSizing: 'border-box' as const }}
         maxLength={7} onFocus={onFocus} onBlur={onBlur} />
     </div>
   )
 }
 
 // ═══════════════════════════════════════════════════════════
-// Live Report Preview (scrollable single doc + page estimate)
+// Live Report Preview
 // ═══════════════════════════════════════════════════════════
 
-// Page estimate model — lightweight math, no DOM measurement needed
 const PAGE_CAPACITY = 44
 const FIRST_PAGE_HEADER = 10
 const SECTION_TITLE = 2
@@ -190,22 +256,11 @@ function LiveReportPreview({
 
   return (
     <div>
-      {/* Stats bar with page estimate */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
         <span style={{ fontSize: 10, color: W.textMuted }}>{enabledSections.length} sections · {totalCharts} charts</span>
-        <span style={{
-          fontSize: 11, fontWeight: 600, color: W.accent,
-          background: `${W.accent}0D`, padding: '3px 10px', borderRadius: 100,
-        }}>Est. {estPages} {estPages === 1 ? 'page' : 'pages'}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: W.accent, background: `${W.accent}0D`, padding: '3px 10px', borderRadius: 100 }}>Est. {estPages} {estPages === 1 ? 'page' : 'pages'}</span>
       </div>
-
-      {/* Single scrollable document */}
-      <div style={{
-        border: `1px solid ${W.border}`, borderRadius: 10, overflow: 'hidden',
-        background: '#fff',
-        boxShadow: '0 2px 16px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.03)',
-      }}>
-        {/* Header */}
+      <div style={{ border: `1px solid ${W.border}`, borderRadius: 10, overflow: 'hidden', background: '#fff', boxShadow: '0 2px 16px rgba(0,0,0,0.04), 0 8px 32px rgba(0,0,0,0.03)' }}>
         <div style={{ padding: '14px 20px', backgroundColor: accentColor }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             {logoUrl && <img src={logoUrl} alt="" style={{ height: 18, maxWidth: 60, objectFit: 'contain', opacity: 0.9, borderRadius: 2 }} />}
@@ -216,8 +271,6 @@ function LiveReportPreview({
           </div>
         </div>
         <div style={{ height: 2, backgroundColor: reportAccentColor }} />
-
-        {/* Sections */}
         <div style={{ maxHeight: 480, overflowY: 'auto' }}>
           {enabledSections.map((sectionId, idx) => {
             const def = ALL_SECTIONS[sectionId]; if (!def) return null
@@ -225,21 +278,16 @@ function LiveReportPreview({
             const hasCharts = charts.length > 0
             const paragraphs = paragraphTargets[sectionId] || DEFAULT_PARAGRAPH_TARGETS[sectionId] || 3
             const isFirst = idx === 0
-
             return (
               <div key={sectionId} style={{ padding: '12px 20px', borderBottom: `1px solid ${W.borderL}` }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6 }}>
                   <div style={{ width: 3, height: 12, borderRadius: 2, background: accentColor, flexShrink: 0 }} />
                   <div style={{ fontSize: 10, fontWeight: 700, color: W.text, lineHeight: 1.3 }}>{def.title}</div>
                 </div>
-
                 {isFirst && (
                   <div style={{ display: 'flex', gap: 4, marginBottom: 6 }}>
                     {[1, 2, 3].map(i => (
-                      <div key={i} style={{
-                        flex: 1, padding: '6px 8px', borderRadius: 4,
-                        background: secondaryColor, border: `1px solid ${W.borderL}`,
-                      }}>
+                      <div key={i} style={{ flex: 1, padding: '6px 8px', borderRadius: 4, background: secondaryColor, border: `1px solid ${W.borderL}` }}>
                         <div style={{ height: 3, width: '60%', borderRadius: 100, background: `${W.labelMuted}40`, marginBottom: 3 }} />
                         <div style={{ fontSize: 11, fontWeight: 700, color: accentColor, lineHeight: 1.2 }}>{i === 1 ? '91.4%' : i === 2 ? '$113.8K' : '$277.8K'}</div>
                         <div style={{ height: 2, width: '40%', borderRadius: 100, background: `${W.green}50`, marginTop: 2 }} />
@@ -247,7 +295,6 @@ function LiveReportPreview({
                     ))}
                   </div>
                 )}
-
                 {Array.from({ length: Math.min(paragraphs, 5) }).map((_, pIdx) => (
                   <div key={pIdx} style={{ marginBottom: pIdx < paragraphs - 1 ? 5 : 0 }}>
                     <div style={{ height: 3, borderRadius: 100, background: secondaryColor, width: '100%', marginBottom: 2 }} />
@@ -255,17 +302,9 @@ function LiveReportPreview({
                     <div style={{ height: 3, borderRadius: 100, background: secondaryColor, width: pIdx === paragraphs - 1 ? '55%' : '85%' }} />
                   </div>
                 ))}
-
                 {hasCharts && (
-                  <div style={{
-                    marginTop: 6, height: 36, borderRadius: 6,
-                    border: `1px dashed ${reportAccentColor}40`,
-                    background: `${reportAccentColor}06`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4,
-                  }}>
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={`${reportAccentColor}70`} strokeWidth="2">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                    </svg>
+                  <div style={{ marginTop: 6, height: 36, borderRadius: 6, border: `1px dashed ${reportAccentColor}40`, background: `${reportAccentColor}06`, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke={`${reportAccentColor}70`} strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                     <span style={{ fontSize: 8, fontWeight: 600, color: `${reportAccentColor}80`, lineHeight: 1 }}>{charts.map(c => CHART_LABELS[c] || c).join(', ')}</span>
                   </div>
                 )}
@@ -273,8 +312,6 @@ function LiveReportPreview({
             )
           })}
         </div>
-
-        {/* Footer */}
         <div style={{ height: 2, backgroundColor: reportAccentColor }} />
         <div style={{ padding: '8px 20px', backgroundColor: accentColor, display: 'flex', justifyContent: 'space-between' }}>
           <span style={{ fontSize: 7, color: 'rgba(255,255,255,0.4)', lineHeight: 1.3 }}>{companyName || 'Company'} | Confidential</span>
@@ -296,7 +333,6 @@ export function SettingsForm({ initialSettings, tier }: Props) {
   const [activeTier, setActiveTier] = useState(tier)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
 
-  // Track unsaved changes
   const markDirty = useCallback(() => setHasUnsavedChanges(true), [])
 
   useEffect(() => {
@@ -309,15 +345,11 @@ export function SettingsForm({ initialSettings, tier }: Props) {
     return () => window.removeEventListener('tierOverrideChanged', handler as EventListener)
   }, [tier])
 
-  // Unsaved changes warning on page leave — use ref to always read latest value
   const hasUnsavedRef = useRef(hasUnsavedChanges)
   useEffect(() => { hasUnsavedRef.current = hasUnsavedChanges }, [hasUnsavedChanges])
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
-      if (hasUnsavedRef.current) {
-        e.preventDefault()
-        e.returnValue = 'You have unsaved settings changes. Leave without saving?'
-      }
+      if (hasUnsavedRef.current) { e.preventDefault(); e.returnValue = 'You have unsaved settings changes. Leave without saving?' }
     }
     window.addEventListener('beforeunload', handler)
     return () => window.removeEventListener('beforeunload', handler)
@@ -360,7 +392,6 @@ export function SettingsForm({ initialSettings, tier }: Props) {
     setEnabledSections(TIER_SECTIONS[activeTier] || TIER_SECTIONS.foundational)
   }, [activeTier, initialSettings?.report_template])
 
-  // Dirty-tracking wrappers
   const updateCompanyName = (v: string) => { setCompanyName(v); markDirty() }
   const updateAccentColor = (v: string) => { setAccentColor(v); markDirty() }
   const updateSecondaryColor = (v: string) => { setSecondaryColor(v); markDirty() }
@@ -441,7 +472,7 @@ export function SettingsForm({ initialSettings, tier }: Props) {
   }
 
   // ═══════════════════════════════════════════════════════════
-  // Unified Save (combines settings + AI preferences)
+  // Unified Save
   // ═══════════════════════════════════════════════════════════
 
   const handleSave = async () => {
@@ -450,25 +481,15 @@ export function SettingsForm({ initialSettings, tier }: Props) {
       const response = await fetch('/api/settings', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          company_name: companyName,
-          accent_color: accentColor,
-          secondary_color: secondaryColor,
-          report_accent_color: reportAccentColor,
-          custom_disclaimer: customDisclaimer,
-          report_template: enabledSections,
-          export_name_template: exportNameTemplate,
-          ai_preferences: aiPreferences,
-          paragraph_targets: paragraphTargets,
+          company_name: companyName, accent_color: accentColor, secondary_color: secondaryColor,
+          report_accent_color: reportAccentColor, custom_disclaimer: customDisclaimer,
+          report_template: enabledSections, export_name_template: exportNameTemplate,
+          ai_preferences: aiPreferences, paragraph_targets: paragraphTargets,
         }),
       })
       const result = await response.json()
-      if (result.success) {
-        setSaveStatus('saved')
-        setHasUnsavedChanges(false)
-        if (result.data) setSettings(result.data)
-      } else {
-        setSaveStatus('error')
-      }
+      if (result.success) { setSaveStatus('saved'); setHasUnsavedChanges(false); if (result.data) setSettings(result.data) }
+      else { setSaveStatus('error') }
     } catch (error) { console.error('Save error:', error); setSaveStatus('error') }
     finally { setIsSaving(false); setTimeout(() => setSaveStatus('idle'), 3000) }
   }
@@ -494,15 +515,35 @@ export function SettingsForm({ initialSettings, tier }: Props) {
   // ═══════════════════════════════════════════════════════════
 
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto' }}>
+    <div className="settings-page-wrap" style={{ maxWidth: 1200, margin: '0 auto' }}>
+      <style>{SETTINGS_MOBILE_CSS}</style>
+
       {/* Page Header */}
       <div style={{ marginBottom: 28 }}>
         <h1 style={{ fontFamily: 'var(--font-display, Georgia, serif)', fontSize: 26, fontWeight: 500, color: W.text, letterSpacing: '-0.015em', margin: 0 }}>Settings</h1>
         <p style={{ fontSize: 14, color: W.textSoft, margin: '4px 0 0' }}>Customize your reports and branding</p>
       </div>
 
-      {/* ═══ SPLIT LAYOUT: Settings (left) + Preview (right) ═══ */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 28, alignItems: 'start' }}>
+      {/* ═══ Mobile Save Bar (hidden on desktop, visible on mobile) ═══ */}
+      <div className="settings-save-bar-mobile" style={{ display: 'none' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {hasUnsavedChanges && (
+            <span style={{ fontSize: 11, fontWeight: 500, color: W.gold, display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span style={{ width: 6, height: 6, borderRadius: '50%', background: W.gold }} />
+              Unsaved
+            </span>
+          )}
+          {saveStatus === 'saved' && <span style={{ color: W.green, fontSize: 12, fontWeight: 600 }}>Saved</span>}
+          {saveStatus === 'error' && <span style={{ color: W.red, fontSize: 12, fontWeight: 600 }}>Failed</span>}
+        </div>
+        <button onClick={handleSave} disabled={isSaving}
+          style={{ padding: '9px 24px', fontSize: 13, fontWeight: 600, color: '#fff', background: W.green, border: 'none', borderRadius: 10, cursor: isSaving ? 'not-allowed' : 'pointer', opacity: isSaving ? 0.6 : 1, boxShadow: `0 2px 12px ${W.green}30` }}>
+          {isSaving ? 'Saving...' : 'Save'}
+        </button>
+      </div>
+
+      {/* ═══ SPLIT LAYOUT ═══ */}
+      <div className="settings-split-layout" style={{ display: 'grid', gridTemplateColumns: '1fr 380px', gap: 28, alignItems: 'start' }}>
 
         {/* ─── LEFT: Settings Panels ─── */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 28 }}>
@@ -510,19 +551,13 @@ export function SettingsForm({ initialSettings, tier }: Props) {
           {/* ══════ SECTION 1: Brand & Identity ══════ */}
           <section style={cardStyle}>
             <h2 style={{ ...h2Style, marginBottom: 20 }}>Brand & Identity</h2>
-
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              {/* Company Name */}
               <div>
                 <label style={labelStyle}>Company Name</label>
                 <input type="text" value={companyName} onChange={(e) => updateCompanyName(e.target.value)}
                   placeholder="Acme Capital Partners" style={inputStyle} onFocus={onFocus} onBlur={onBlur} />
               </div>
-
-              {/* Logo */}
               <LogoUploader currentLogoUrl={settings?.company_logo_url || null} onUpload={handleLogoUpload} onRemove={handleLogoRemove} />
-
-              {/* Divider */}
               <div style={{ height: 1, background: W.borderL }} />
 
               {/* Color Palette */}
@@ -577,7 +612,6 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                 </div>
               </div>
 
-              {/* Divider */}
               <div style={{ height: 1, background: W.borderL }} />
 
               {/* Export Filename */}
@@ -586,7 +620,7 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                 <p style={{ ...descStyle, marginBottom: 12 }}>Template for your PDF export filenames.</p>
                 <input type="text" value={exportNameTemplate} onChange={(e) => updateExportNameTemplate(e.target.value)}
                   placeholder="{property_name}, as of {date}, Investor Report" style={{ ...inputStyle, fontSize: 13 }} onFocus={onFocus} onBlur={onBlur} />
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                <div className="settings-token-row" style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
                   {[
                     { token: '{property_name}', tip: 'Sunset Apartments' },
                     { token: '{company_name}', tip: companyName || 'Your Company' },
@@ -596,13 +630,13 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                     { token: '{month}', tip: '01' },
                     { token: '{year}', tip: '2026' },
                   ].map(v => (
-                    <button key={v.token} type="button" title={v.tip} onClick={() => updateExportNameTemplate(exportNameTemplate + v.token)}
+                    <button className="settings-token-btn" key={v.token} type="button" title={v.tip} onClick={() => updateExportNameTemplate(exportNameTemplate + v.token)}
                       style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 600, color: W.accent, background: `${W.accent}0D`, border: `1px solid ${W.accent}22`, padding: '4px 8px', borderRadius: 6, cursor: 'pointer' }}>
                       {v.token}
                     </button>
                   ))}
                 </div>
-                <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div className="settings-filename-preview" style={{ marginTop: 10, display: 'flex', alignItems: 'center', gap: 6 }}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.textMuted} strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/></svg>
                   <span style={{ fontSize: 12, color: W.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{exportNamePreview}</span>
                 </div>
@@ -643,9 +677,7 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                         <span style={{ fontSize: 10, fontFamily: 'monospace', color: W.textMuted, width: 20, textAlign: 'right' as const }}>{idx + 1}.</span>
                         <span style={{ fontSize: 12, color: W.textMid }}>{def.title}</span>
                         {def.visualizations !== 'none' && (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D4A043" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
-                          </svg>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#D4A043" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
                         )}
                         <span style={{ fontSize: 10, color: W.textMuted, marginLeft: 'auto' }}>{paragraphTargets[sectionId] || DEFAULT_PARAGRAPH_TARGETS[sectionId] || 3}p</span>
                       </div>
@@ -689,7 +721,7 @@ export function SettingsForm({ initialSettings, tier }: Props) {
               )}
             </div>
 
-            {/* ─── Enabled Sections (draggable, with inline paragraph stepper) ─── */}
+            {/* ─── Enabled Sections (draggable) ─── */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginBottom: 8 }}>
               {enabledSections.map((sectionId, idx) => {
                 const def = ALL_SECTIONS[sectionId]; if (!def) return null
@@ -701,23 +733,20 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                 const paraCount = paragraphTargets[sectionId] || DEFAULT_PARAGRAPH_TARGETS[sectionId] || 3
                 return (
                   <div key={sectionId}>
-                    <div draggable={!isExec} onDragStart={() => handleDragStart(idx)} onDragOver={(e) => handleDragOver(e, idx)} onDrop={() => handleDrop(idx)} onDragEnd={handleDragEnd}
+                    <div className="settings-section-row" draggable={!isExec} onDragStart={() => handleDragStart(idx)} onDragOver={(e) => handleDragOver(e, idx)} onDrop={() => handleDrop(idx)} onDragEnd={handleDragEnd}
                       style={{
                         display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 10,
                         border: `1px solid ${isDragging ? `${W.accent}50` : isDragOver ? `${W.accent}60` : W.border}`,
                         background: isDragging ? `${W.accent}06` : isDragOver ? `${W.accent}04` : W.bg,
                         opacity: isDragging ? 0.5 : 1, transition: 'all 0.2s cubic-bezier(0.22,1,0.36,1)',
                       }}>
-                      {/* Drag handle */}
                       <div style={{ flexShrink: 0, opacity: isExec ? 0 : 0.4, cursor: isExec ? 'default' : 'grab', color: W.textMuted }}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" d="M4 8h16M4 16h16"/></svg>
                       </div>
-                      {/* Toggle */}
                       <button onClick={() => handleToggleSection(sectionId)} disabled={isExec}
                         style={{ flexShrink: 0, width: 32, height: 20, borderRadius: 10, border: 'none', cursor: isExec ? 'not-allowed' : 'pointer', background: W.accent, position: 'relative' as const, transition: 'background 0.2s' }}>
                         <span style={{ position: 'absolute', right: 2, top: 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.12)', transition: 'all 0.2s' }} />
                       </button>
-                      {/* Title + badges */}
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           <span style={{ fontSize: 13, fontWeight: 600, color: W.text, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{def.title}</span>
@@ -725,23 +754,21 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                           {def.isConditional && <span style={{ fontSize: 10, fontWeight: 600, color: '#D97706', background: '#FEF3C720', padding: '2px 6px', borderRadius: 4 }}>Conditional</span>}
                         </div>
                       </div>
-                      {/* Chart badges */}
-                      <div style={{ flexShrink: 0, display: 'flex', gap: 3, maxWidth: 120, overflow: 'hidden' }}>
+                      {/* Chart badges — hidden on mobile */}
+                      <div className="settings-chart-badges" style={{ flexShrink: 0, display: 'flex', gap: 3, maxWidth: 120, overflow: 'hidden' }}>
                         {charts.length > 0 ? charts.slice(0, 2).map(c => (
                           <span key={c} style={{ fontSize: 10, fontWeight: 600, color: W.accent, background: `${W.accent}0D`, border: `1px solid ${W.accent}22`, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{CHART_LABELS[c] || c}</span>
                         )) : <span style={{ fontSize: 10, color: W.textMuted }}>Text only</span>}
                       </div>
-                      {/* Inline paragraph stepper */}
-                      <div style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2, background: W.bgAlt, borderRadius: 6, padding: '2px 4px' }}>
+                      {/* Paragraph stepper */}
+                      <div className="settings-para-stepper" style={{ flexShrink: 0, display: 'flex', alignItems: 'center', gap: 2, background: W.bgAlt, borderRadius: 6, padding: '2px 4px' }}>
                         <button onClick={() => handleParagraphChange(sectionId, Math.max(1, paraCount - 1))}
                           style={{ width: 20, height: 20, borderRadius: 4, border: 'none', cursor: 'pointer', background: 'transparent', color: paraCount <= 1 ? W.borderL : W.textSoft, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s' }}>-</button>
                         <span style={{ fontSize: 12, fontWeight: 600, color: W.textMid, minWidth: 22, textAlign: 'center' as const, fontFamily: 'var(--font-body, sans-serif)' }}>{paraCount}p</span>
                         <button onClick={() => handleParagraphChange(sectionId, Math.min(8, paraCount + 1))}
                           style={{ width: 20, height: 20, borderRadius: 4, border: 'none', cursor: 'pointer', background: 'transparent', color: paraCount >= 8 ? W.borderL : W.textSoft, fontSize: 14, fontWeight: 600, display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'color 0.15s' }}>+</button>
                       </div>
-                      {/* Info button */}
                       <LightbulbButton isOpen={infoOpen} onClick={() => toggleInfo(sectionId)} />
-                      {/* Remove button */}
                       {!isExec && (
                         <button onClick={() => handleToggleSection(sectionId)} style={{ flexShrink: 0, padding: 4, border: 'none', background: 'none', cursor: 'pointer', color: W.textMuted, borderRadius: 4, transition: 'color 0.2s' }}
                           onMouseEnter={(e) => e.currentTarget.style.color = W.red}
@@ -756,7 +783,7 @@ export function SettingsForm({ initialSettings, tier }: Props) {
               })}
             </div>
 
-            {/* ─── Available to Add (disabled sections for this tier) ─── */}
+            {/* ─── Available to Add ─── */}
             {(() => {
               const disabled = availableSections.filter(id => !enabledSections.includes(id))
               if (disabled.length === 0) return null
@@ -774,7 +801,6 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                             onMouseEnter={(e) => e.currentTarget.style.background = W.bgAlt}
                             onMouseLeave={(e) => e.currentTarget.style.background = `${W.bgAlt}80`}>
                             <div style={{ width: 16 }} />
-                            {/* Off toggle */}
                             <button onClick={() => handleToggleSection(sectionId)}
                               style={{ flexShrink: 0, width: 32, height: 20, borderRadius: 10, background: '#D4A0A0', border: 'none', cursor: 'pointer', position: 'relative' as const, transition: 'background 0.2s' }}>
                               <span style={{ position: 'absolute', left: 2, top: 2, width: 16, height: 16, borderRadius: '50%', background: '#fff', boxShadow: '0 1px 2px rgba(0,0,0,0.12)' }} />
@@ -785,7 +811,7 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                                 {def.isConditional && <span style={{ fontSize: 10, fontWeight: 600, color: '#D97706', background: '#FEF3C720', padding: '2px 6px', borderRadius: 4 }}>Conditional</span>}
                               </div>
                             </div>
-                            <div style={{ flexShrink: 0, display: 'flex', gap: 3, maxWidth: 120, overflow: 'hidden' }}>
+                            <div className="settings-chart-badges" style={{ flexShrink: 0, display: 'flex', gap: 3, maxWidth: 120, overflow: 'hidden' }}>
                               {charts.map(c => <span key={c} style={{ fontSize: 10, color: W.textMuted, background: W.bgAlt, padding: '2px 6px', borderRadius: 4, whiteSpace: 'nowrap' }}>{CHART_LABELS[c] || c}</span>)}
                             </div>
                             <LightbulbButton isOpen={infoOpen} onClick={() => toggleInfo(sectionId)} />
@@ -799,7 +825,7 @@ export function SettingsForm({ initialSettings, tier }: Props) {
               )
             })()}
 
-            {/* ─── Locked sections (higher tier) — enticing upgrade messaging ─── */}
+            {/* ─── Locked sections ─── */}
             {lockedSections.length > 0 && (
               <div style={{ borderTop: `1px solid ${W.borderL}`, paddingTop: 16, marginTop: 16 }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -822,12 +848,7 @@ export function SettingsForm({ initialSettings, tier }: Props) {
                             <span style={{ fontSize: 13, fontWeight: 600, color: W.textMid }}>{def.title}</span>
                           </div>
                           <LightbulbButton isOpen={infoOpen} onClick={() => toggleInfo(sectionId)} />
-                          <a href="/dashboard/pricing" style={{
-                            flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3,
-                            fontSize: 10, fontWeight: 700, color: '#fff', background: W.accent,
-                            padding: '4px 10px', borderRadius: 100, textDecoration: 'none',
-                            boxShadow: `0 2px 8px ${W.accent}30`,
-                          }}>
+                          <a href="/dashboard/pricing" style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, fontWeight: 700, color: '#fff', background: W.accent, padding: '4px 10px', borderRadius: 100, textDecoration: 'none', boxShadow: `0 2px 8px ${W.accent}30` }}>
                             Unlock
                             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M9 5l7 7-7 7"/></svg>
                           </a>
@@ -840,7 +861,6 @@ export function SettingsForm({ initialSettings, tier }: Props) {
               </div>
             )}
 
-            {/* Footer stats */}
             <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${W.borderL}`, display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ fontSize: 12, color: W.textMuted }}>{enabledSections.length} sections enabled</span>
               <span style={{ fontSize: 12, color: W.textMuted }}>{relevantQuestionCount} guided questions</span>
@@ -851,7 +871,6 @@ export function SettingsForm({ initialSettings, tier }: Props) {
           <section style={cardStyle}>
             <h2 style={{ ...h2Style, marginBottom: 4 }}>WriteUp Intelligence</h2>
             <p style={descStyle}>Fine-tune how your reports are written and analyzed.</p>
-
             <div style={{ marginTop: 20 }}>
               <ReportStylePanel
                 preferences={aiPreferences}
@@ -866,9 +885,8 @@ export function SettingsForm({ initialSettings, tier }: Props) {
 
         </div>
 
-        {/* ─── RIGHT: Sticky — Save Button + Paginated Preview ─── */}
-        <div style={{ position: 'sticky', top: 24, alignSelf: 'start' }}>
-          {/* Save bar */}
+        {/* ─── RIGHT: Sticky Preview ─── */}
+        <div className="settings-preview-col" style={{ position: 'sticky', top: 24, alignSelf: 'start' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
               {hasUnsavedChanges && (
@@ -895,17 +913,11 @@ export function SettingsForm({ initialSettings, tier }: Props) {
               {isSaving ? 'Saving...' : 'Save Settings'}
             </button>
           </div>
-
-          {/* Preview label */}
           <h3 style={{ fontSize: 13, fontWeight: 600, color: W.textSoft, marginBottom: 8 }}>Live Report Preview</h3>
           <LiveReportPreview
-            companyName={companyName}
-            accentColor={accentColor}
-            secondaryColor={secondaryColor}
-            reportAccentColor={reportAccentColor}
-            enabledSections={enabledSections}
-            paragraphTargets={paragraphTargets}
-            logoUrl={settings?.company_logo_url}
+            companyName={companyName} accentColor={accentColor} secondaryColor={secondaryColor}
+            reportAccentColor={reportAccentColor} enabledSections={enabledSections}
+            paragraphTargets={paragraphTargets} logoUrl={settings?.company_logo_url}
           />
         </div>
 

@@ -23,6 +23,57 @@ type PropertiesData = {
 
 type SlotInfo = { used: number; total: number }
 
+/* ═══════════════════════════════════════════════════════════════
+   MOBILE CSS
+   ═══════════════════════════════════════════════════════════════ */
+const PROPS_MOBILE_CSS = `
+@media (max-width: 768px) {
+  .props-header {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+  .props-header-actions {
+    width: 100% !important;
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 8px !important;
+  }
+  .props-search-box {
+    flex: 1 !important;
+    width: auto !important;
+    min-width: 0 !important;
+  }
+  .props-add-btn {
+    white-space: nowrap !important;
+    padding: 10px 14px !important;
+    flex-shrink: 0 !important;
+    font-size: 14px !important;
+  }
+  .props-add-btn .props-label-full { display: none !important; }
+  .props-add-btn .props-label-short { display: inline !important; }
+  .props-stats-grid {
+    grid-template-columns: 1fr 1fr !important;
+  }
+  .props-card-grid {
+    grid-template-columns: 1fr !important;
+  }
+  .props-card-actions {
+    flex-direction: row !important;
+  }
+  .props-last-report {
+    flex-wrap: wrap !important;
+    gap: 4px !important;
+  }
+  .props-page-title {
+    font-size: 22px !important;
+  }
+  .props-subtitle {
+    font-size: 13px !important;
+  }
+}
+`;
+
 /* ── Icons ── */
 const I = {
   building: (c = C.textSoft, s = 18) => <svg width={s} height={s} viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="4" y="2" width="16" height="20" rx="2" /><path d="M9 22V12h6v10" /><path d="M8 6h.01M16 6h.01M12 6h.01M8 10h.01M16 10h.01M12 10h.01" /></svg>,
@@ -109,35 +160,39 @@ export function PropertiesContent() {
   const allSlotsFull = slots ? (data?.properties?.length || 0) >= slots.total : false
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 24, minWidth: 0 }}>
+      <style>{PROPS_MOBILE_CSS}</style>
+
       {/* Header with search + button */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <div>
-          <h1 style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 28, fontWeight: 500, color: C.text, letterSpacing: '-0.015em' }}>Properties</h1>
-          <p style={{ fontSize: 15, color: C.textSoft, marginTop: 4 }}>
+      <div className="props-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ minWidth: 0 }}>
+          <h1 className="props-page-title" style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 28, fontWeight: 500, color: C.text, letterSpacing: '-0.015em', margin: 0 }}>Properties</h1>
+          <p className="props-subtitle" style={{ fontSize: 15, color: C.textSoft, marginTop: 4 }}>
             Manage your portfolio properties
             {slots && <span style={{ color: C.textMuted }}> · {slots.used} of {slots.total} slots used</span>}
           </p>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div className="props-header-actions" style={{ display: 'flex', alignItems: 'center', gap: 12, flexShrink: 0 }}>
           {hasProperties && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', width: 220, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10 }}>
+            <div className="props-search-box" style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 14px', width: 220, background: C.bg, border: `1px solid ${C.border}`, borderRadius: 10, boxSizing: 'border-box' as const }}>
               {I.search(C.textMuted, 15)}
               <input
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search..."
-                style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 14, color: C.text, fontFamily: 'inherit', width: '100%' }}
+                style={{ border: 'none', outline: 'none', background: 'transparent', fontSize: 14, color: C.text, fontFamily: 'inherit', width: '100%', minWidth: 0 }}
               />
             </div>
           )}
-          <Link href="/dashboard/properties/new" style={{
+          <Link className="props-add-btn" href="/dashboard/properties/new" style={{
             display: 'flex', alignItems: 'center', gap: 8, padding: '12px 24px', fontSize: 15, fontWeight: 600,
             color: '#fff', background: C.accent, border: 'none', borderRadius: 10, cursor: 'pointer',
             boxShadow: `0 2px 12px ${C.accent}30`, whiteSpace: 'nowrap', textDecoration: 'none',
           }}>
-            {I.plus('#fff', 16)} Add Property
+            {I.plus('#fff', 16)}
+            <span className="props-label-full">Add Property</span>
+            <span className="props-label-short" style={{ display: 'none' }}>Add</span>
           </Link>
         </div>
       </div>
@@ -145,25 +200,25 @@ export function PropertiesContent() {
       {hasProperties ? (
         <>
           {/* Stats */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          <div className="props-stats-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
             <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase', color: C.textSoft }}>TOTAL PROPERTIES</div>
                 <div style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 28, fontWeight: 500, color: C.text, lineHeight: 1, marginTop: 4 }}>{data?.stats.totalProperties || 0}</div>
               </div>
-              <div style={{ width: 40, height: 40, borderRadius: 12, background: C.bgAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{I.building(C.textSoft)}</div>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: C.bgAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{I.building(C.textSoft)}</div>
             </div>
             <div style={{ background: C.bg, border: `1px solid ${C.border}`, borderRadius: 14, padding: '16px 18px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div>
+              <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 600, letterSpacing: '0.03em', textTransform: 'uppercase', color: C.textSoft }}>TOTAL UNITS</div>
                 <div style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 28, fontWeight: 500, color: C.accent, lineHeight: 1, marginTop: 4 }}>{data?.stats.totalUnits.toLocaleString() || 0}</div>
               </div>
-              <div style={{ width: 40, height: 40, borderRadius: 12, background: C.bgAlt, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{I.users(C.textSoft)}</div>
+              <div style={{ width: 40, height: 40, borderRadius: 12, background: C.bgAlt, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>{I.users(C.textSoft)}</div>
             </div>
           </div>
 
-          {/* Cards Grid */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+          {/* Cards Grid — 3 col desktop, 1 col mobile */}
+          <div className="props-card-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
             {filteredProperties.map((p) => {
               const isHovered = hovered === p.id
               return (
@@ -176,12 +231,13 @@ export function PropertiesContent() {
                     overflow: 'hidden', transition: 'all 0.3s cubic-bezier(0.22,1,0.36,1)',
                     transform: isHovered ? 'translateY(-2px)' : 'none',
                     boxShadow: isHovered ? '0 8px 32px rgba(0,0,0,0.06)' : 'none',
+                    minWidth: 0,
                   }}
                 >
                   <div style={{ padding: '18px 20px 14px' }}>
                     {/* Name + units */}
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 2 }}>
-                      <h3 style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 17, fontWeight: 500, color: C.text, margin: 0, lineHeight: 1.3 }}>{p.name}</h3>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 2 }}>
+                      <h3 style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 17, fontWeight: 500, color: C.text, margin: 0, lineHeight: 1.3, minWidth: 0, wordBreak: 'break-word' as const }}>{p.name}</h3>
                       <span style={{ fontSize: 12, fontWeight: 600, color: C.textSoft, background: C.bgAlt, borderRadius: 6, padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 4, flexShrink: 0 }}>
                         {I.building(C.textSoft, 12)} {p.units}
                       </span>
@@ -195,11 +251,11 @@ export function PropertiesContent() {
                     </div>
 
                     {/* Last report + generated tag */}
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13 }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: C.textMuted }}>
+                    <div className="props-last-report" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', fontSize: 13 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: C.textMuted, minWidth: 0, overflow: 'hidden' }}>
                         {I.clock(C.textMuted, 13)}
-                        <span>Last report:</span>
-                        <span style={{ fontWeight: 500, color: p.lastReport ? C.textMid : C.textMuted }}>
+                        <span style={{ whiteSpace: 'nowrap' }}>Last report:</span>
+                        <span style={{ fontWeight: 500, color: p.lastReport ? C.textMid : C.textMuted, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                           {p.lastReport || 'None'}
                         </span>
                       </div>
@@ -207,7 +263,7 @@ export function PropertiesContent() {
                         <span style={{
                           fontSize: 10, fontWeight: 600, letterSpacing: '0.04em', textTransform: 'uppercase',
                           color: C.green, background: `${C.green}08`, border: `1px solid ${C.green}18`,
-                          borderRadius: 100, padding: '3px 8px', whiteSpace: 'nowrap',
+                          borderRadius: 100, padding: '3px 8px', whiteSpace: 'nowrap', flexShrink: 0,
                         }}>
                           Generated
                         </span>
@@ -216,7 +272,7 @@ export function PropertiesContent() {
                   </div>
 
                   {/* Actions */}
-                  <div style={{ display: 'flex', gap: 8, padding: '0 20px 18px' }}>
+                  <div className="props-card-actions" style={{ display: 'flex', gap: 8, padding: '0 20px 18px' }}>
                     <Link href={`/dashboard/reports/new?property=${p.id}`} style={{
                       flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
                       padding: '10px 16px', fontSize: 14, fontWeight: 600, color: '#fff',

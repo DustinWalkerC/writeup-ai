@@ -643,14 +643,18 @@ function buildSectionsToGenerateBlock(
   const skipped = sections.filter(s => sectionsToSkip.includes(s.id));
 
   let block = `<sections_to_generate>
-IMPORTANT: Generate sections in EXACTLY this order. The order numbers below are the user's configured report layout.
-Do NOT rearrange sections. Section order="1" must be first in the response array, order="2" second, etc.\n\n`;
+CRITICAL — SECTION ORDER IS MANDATORY:
+The user has configured a specific section layout. You MUST output the "sections" array in EXACTLY this order.
+Do NOT reorder sections based on your own judgment of logical flow.
+The order below is intentional and reflects the user's business preference.
+Section order="1" MUST be index 0 in the response array, order="2" MUST be index 1, etc.
+Violating section order is a critical error.\n\n`;
 
   for (let i = 0; i < active.length; i++) {
     const section = active[i];
     const paragraphs = paragraphCounts?.[section.id] || undefined;
     block += `<section order="${i + 1}" id="${section.id}" title="${section.title}"${paragraphs ? ` paragraphs="${paragraphs}"` : ''}>
-Refer to section_guidance id="${section.id}" in the system prompt for analysis instructions.
+Refer to section_guidance id="${section.id}" in the system prompt for analysis instructions.${paragraphs ? `\nWRITE EXACTLY ${paragraphs} PARAGRAPHS for this section. This is a hard requirement from the user's settings.` : ''}
 </section>\n\n`;
   }
   block += `</sections_to_generate>`;

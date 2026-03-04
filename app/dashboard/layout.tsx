@@ -24,6 +24,68 @@ const C = {
 };
 
 /* ═══════════════════════════════════════════════════════════════
+   MOBILE CSS — injected <style> so it always works
+   ═══════════════════════════════════════════════════════════════ */
+const LAYOUT_MOBILE_CSS = `
+/* ── Desktop (>768px): sidebar visible, topbar hidden ── */
+@media (min-width: 769px) {
+  .dash-topbar { display: none !important; }
+  .dash-overlay { display: none !important; }
+  .dash-sidebar { transform: translateX(0) !important; }
+  .dash-main {
+    margin-left: 240px !important;
+    padding: 28px 32px !important;
+  }
+  .dash-spacer { display: none !important; }
+}
+
+/* ── Mobile (≤768px): sidebar slides, topbar visible ── */
+@media (max-width: 768px) {
+  .dash-topbar {
+    display: flex !important;
+  }
+  .dash-sidebar {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    bottom: 0 !important;
+    width: 260px !important;
+    z-index: 100 !important;
+    transform: translateX(-100%) !important;
+    transition: transform 0.3s cubic-bezier(0.22, 1, 0.36, 1) !important;
+    background: #FFFFFF !important;
+    border-right: 1px solid #E8E5E0 !important;
+    overflow-y: auto !important;
+  }
+  .dash-sidebar.open {
+    transform: translateX(0) !important;
+  }
+  .dash-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.3);
+    z-index: 90;
+    transition: opacity 0.3s;
+  }
+  .dash-overlay.open {
+    display: block !important;
+  }
+  .dash-main {
+    margin-left: 0 !important;
+    padding: 16px !important;
+    max-width: 100vw !important;
+    overflow-x: hidden !important;
+    box-sizing: border-box !important;
+  }
+  .dash-spacer {
+    display: block !important;
+    height: 56px !important;
+  }
+}
+`;
+
+/* ═══════════════════════════════════════════════════════════════
    SVG ICONS — No icon library. Stroke-based, 18x18.
    ═══════════════════════════════════════════════════════════════ */
 const Icons = {
@@ -45,11 +107,6 @@ const Icons = {
   sliders: (c: string) => (
     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
-    </svg>
-  ),
-  palette: (c: string) => (
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="10.5" r="2.5"/><circle cx="8.5" cy="7.5" r="2.5"/><circle cx="6.5" cy="12" r="2.5"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.93 0 1.5-.67 1.5-1.5 0-.39-.15-.74-.39-1.04-.23-.29-.37-.65-.37-1.04 0-.83.67-1.5 1.5-1.5H16c3.31 0 6-2.69 6-6 0-5.17-4.36-8.92-10-8.92z"/>
     </svg>
   ),
   plus: (c: string) => (
@@ -150,16 +207,26 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   };
 
   return (
-    <div style={{ minHeight: '100vh', background: C.bgAlt, fontFamily: "var(--font-body, 'DM Sans', sans-serif)" }}>
+    <div style={{
+      minHeight: '100vh',
+      background: C.bgAlt,
+      fontFamily: "var(--font-body, 'DM Sans', sans-serif)",
+      overflowX: 'hidden',
+      width: '100%',
+      maxWidth: '100vw',
+    }}>
+      {/* Injected mobile CSS */}
+      <style>{LAYOUT_MOBILE_CSS}</style>
 
       {/* ═══ MOBILE TOP BAR ═══ */}
-      <div className="mobile-menu-btn" style={{
+      <div className="dash-topbar" style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 50,
         background: 'rgba(255,255,255,0.92)',
         backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)',
         borderBottom: `1px solid ${C.borderL}`,
         padding: '0 16px', height: 56,
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        display: 'none', /* hidden by default — CSS media query shows on mobile */
+        alignItems: 'center', justifyContent: 'space-between',
       }}>
         <button
           onClick={() => setMobileOpen(!mobileOpen)}
@@ -177,18 +244,25 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           }}>W</div>
           <span style={{ fontFamily: "var(--font-display, 'Newsreader', serif)", fontSize: 17, fontWeight: 500, color: C.text }}>WriteUp AI</span>
         </div>
-        {/* Placeholder for spacing — UserButton lives in sidebar */}
+        {/* Placeholder for spacing */}
         <div style={{ width: 28 }} />
       </div>
 
       {/* ═══ SIDEBAR OVERLAY (mobile) ═══ */}
       <div
-        className={`sidebar-overlay ${mobileOpen ? 'open' : ''}`}
+        className={`dash-overlay ${mobileOpen ? 'open' : ''}`}
         onClick={() => setMobileOpen(false)}
       />
 
       {/* ═══ SIDEBAR ═══ */}
-      <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
+      <aside className={`dash-sidebar ${mobileOpen ? 'open' : ''}`}
+        style={{
+          position: 'fixed', top: 0, left: 0, bottom: 0, width: 240,
+          background: C.bg, borderRight: `1px solid ${C.borderL}`,
+          display: 'flex', flexDirection: 'column', padding: '20px 12px 12px',
+          zIndex: 100, overflowY: 'auto',
+        }}
+      >
         {/* Logo */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 9, padding: '8px 14px', marginBottom: 24 }}>
           <div style={{
@@ -334,15 +408,18 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
       {/* ═══ MAIN CONTENT ═══ */}
       <main
-        className="main-content"
+        className="dash-main"
         style={{
           marginLeft: 240,
           minHeight: '100vh',
           padding: '28px 32px',
+          maxWidth: '100vw',
+          overflowX: 'hidden' as const,
+          boxSizing: 'border-box' as const,
         }}
       >
         {/* Mobile spacer for fixed top bar */}
-        <div className="mobile-menu-btn" style={{ height: 56, display: 'none' }} />
+        <div className="dash-spacer" style={{ display: 'none', height: 56 }} />
         {children}
       </main>
 

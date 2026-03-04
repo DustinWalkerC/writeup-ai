@@ -8,7 +8,7 @@ type Props = {
 export function KPICard({ metric, accentColor = '#0f172a' }: Props) {
   const formatValue = (value: number | string, format: KPIMetric['format']) => {
     if (typeof value === 'string') return value
-    
+
     switch (format) {
       case 'percent':
         return `${value.toFixed(1)}%`
@@ -41,65 +41,94 @@ export function KPICard({ metric, accentColor = '#0f172a' }: Props) {
   const getChangeIcon = (direction: 'up' | 'down' | 'flat') => {
     switch (direction) {
       case 'up':
-        return '↑'
+        return '▲'
       case 'down':
-        return '↓'
+        return '▼'
       default:
         return '→'
     }
   }
 
-  // Generate a lighter version of the accent color for background
   const bgColor = `${accentColor}10`
 
   return (
-    <div
-      style={{
-        backgroundColor: bgColor,
-        borderRadius: '8px',
-        padding: '16px',
-        border: `1px solid ${accentColor}20`,
-      }}
-    >
+    <>
       <div
+        className="kpi-card"
         style={{
-          fontSize: '0.75rem',
-          fontWeight: 500,
-          color: '#64748b',
-          textTransform: 'uppercase',
-          letterSpacing: '0.05em',
-          marginBottom: '8px',
+          backgroundColor: bgColor,
+          borderRadius: 8,
+          padding: '14px 12px',
+          border: `1px solid ${accentColor}20`,
+          minWidth: 0, // prevents flex children from overflowing
         }}
       >
-        {metric.label}
-      </div>
-      <div
-        style={{
-          fontSize: '1.5rem',
-          fontWeight: 700,
-          color: accentColor,
-          marginBottom: metric.change ? '8px' : 0,
-        }}
-      >
-        {formatValue(metric.value, metric.format)}
-      </div>
-      {metric.change && (
         <div
+          className="kpi-label"
           style={{
-            fontSize: '0.75rem',
-            color: getStatusColor(metric.status),
-            display: 'flex',
-            alignItems: 'center',
-            gap: '4px',
+            fontSize: '0.7rem',
+            fontWeight: 600,
+            color: '#64748b',
+            textTransform: 'uppercase',
+            letterSpacing: '0.04em',
+            marginBottom: 6,
+            lineHeight: 1.3,
+            wordBreak: 'break-word',
           }}
         >
-          <span>{getChangeIcon(metric.change.direction)}</span>
-          <span>
-            {metric.change.value.toFixed(1)}% {metric.change.comparison}
-          </span>
+          {metric.label}
         </div>
-      )}
-    </div>
+        <div
+          className="kpi-value"
+          style={{
+            fontSize: 'clamp(1.1rem, 4vw, 1.5rem)',
+            fontWeight: 700,
+            color: accentColor,
+            marginBottom: metric.change ? 6 : 0,
+            lineHeight: 1.2,
+            wordBreak: 'break-word',
+            overflowWrap: 'break-word',
+          }}
+        >
+          {formatValue(metric.value, metric.format)}
+        </div>
+        {metric.change && (
+          <div
+            className="kpi-change"
+            style={{
+              fontSize: '0.7rem',
+              color: getStatusColor(metric.status),
+              display: 'flex',
+              alignItems: 'center',
+              gap: 3,
+              flexWrap: 'wrap',
+              lineHeight: 1.4,
+            }}
+          >
+            <span style={{ fontSize: '0.6rem' }}>{getChangeIcon(metric.change.direction)}</span>
+            <span>
+              {metric.change.value.toFixed(1)}% {metric.change.comparison}
+            </span>
+          </div>
+        )}
+      </div>
+      <style>{`
+        @media (max-width: 640px) {
+          .kpi-card {
+            padding: 10px 8px !important;
+          }
+          .kpi-label {
+            font-size: 0.6rem !important;
+            margin-bottom: 4px !important;
+          }
+          .kpi-value {
+            font-size: 1rem !important;
+          }
+          .kpi-change {
+            font-size: 0.6rem !important;
+          }
+        }
+      `}</style>
+    </>
   )
 }
-

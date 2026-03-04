@@ -633,6 +633,12 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
     budget_noi: rawNoi.budget ?? undefined,
   } : null;
 
+  // Read paragraph targets from user settings
+  const paragraphTargets: Record<string, number> | undefined =
+    settings?.paragraph_targets && typeof settings.paragraph_targets === 'object'
+      ? (settings.paragraph_targets as Record<string, number>)
+      : undefined;
+
   const narrativeSystemPrompt = buildNarrativeSystemPrompt({
     tier: input.tier,
     propertyName: property?.name || 'Unknown Property',
@@ -651,6 +657,7 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
       accent: brandColors.accent,
     },
     budgetSummary,
+    sectionParagraphCounts: paragraphTargets,
   });
 
   // Get freeform narrative from report
@@ -675,6 +682,7 @@ async function generateWithCORE(input: ReportGenerationInput): Promise<ReadableS
       secondary: brandColors.secondary,
       accent: brandColors.accent,
     },
+    sectionParagraphCounts: paragraphTargets,
   });
 
   // Store extraction data and validation warnings for debugging

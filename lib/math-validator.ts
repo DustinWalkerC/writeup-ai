@@ -29,6 +29,9 @@
  * │    2.5-layer verified — known metric, some inputs from suppl.│
  * │    2-layer verified   — custom metric, inputs in registry    │
  * │    arithmetic-only    — custom metric, custom inputs         │
+ * │                                                              │
+ * │  C5 FIX: Added input key alias resolver to handle Claude     │
+ * │  using "current_revenue" when formula expects "total_revenue" │
  * └──────────────────────────────────────────────────────────────┘
  */
 
@@ -120,6 +123,140 @@ export interface ValidatorResult {
   sectionsToRegenerate: string[];
   /** Map of section_id → corrected calculations for narrative patching */
   corrections: Map<string, Array<{ metric_name: string; ai_value: number; corrected_value: number }>>;
+}
+
+// ═══════════════════════════════════════════════════════════
+// C5 FIX: INPUT KEY ALIAS MAP
+//
+// Claude uses varied naming conventions for the same concept.
+// The formula registry expects canonical names like
+// "total_revenue" but Claude may pass "current_revenue",
+// "revenue", "total_income", etc.
+//
+// This map resolves Claude's naming to the canonical variable
+// names used in FORMULA_REGISTRY formulas. It runs BEFORE
+// formula evaluation so mathjs can find the variables.
+//
+// Direction: claude_key → canonical_formula_variable
+// ═══════════════════════════════════════════════════════════
+
+const INPUT_KEY_ALIASES: Record<string, string> = {
+  // Revenue aliases → total_revenue
+  current_revenue: 'total_revenue',
+  revenue: 'total_revenue',
+  total_income: 'total_revenue',
+  current_income: 'total_revenue',
+  effective_gross_income_value: 'total_revenue',
+  egi_value: 'total_revenue',
+  monthly_revenue: 'total_revenue',
+
+  // Operating expense aliases → total_operating_expenses
+  current_expenses: 'total_operating_expenses',
+  total_expenses: 'total_operating_expenses',
+  operating_expenses: 'total_operating_expenses',
+  current_operating_expenses: 'total_operating_expenses',
+  opex: 'total_operating_expenses',
+  total_opex: 'total_operating_expenses',
+  monthly_expenses: 'total_operating_expenses',
+
+  // NOI aliases → noi
+  net_operating_income: 'noi',
+  current_noi: 'noi',
+  monthly_noi: 'noi',
+
+  // Unit count aliases → units
+  total_units: 'units',
+  unit_count: 'units',
+  num_units: 'units',
+  number_of_units: 'units',
+
+  // Occupancy aliases
+  occupancy: 'physical_occupancy',
+  occupancy_rate: 'physical_occupancy',
+  current_occupancy: 'physical_occupancy',
+  occ_rate: 'physical_occupancy',
+
+  // Variance aliases
+  actual_value: 'actual',
+  actual_amount: 'actual',
+  current_value: 'actual',
+  current_amount: 'actual',
+  budget_value: 'budget',
+  budget_amount: 'budget',
+  budgeted: 'budget',
+  budgeted_amount: 'budget',
+
+  // MoM aliases
+  current_month: 'current',
+  current_period: 'current',
+  this_month: 'current',
+  prior_month: 'prior',
+  previous_month: 'prior',
+  last_month: 'prior',
+  prior_period: 'prior',
+
+  // GPR aliases → gross_potential_rent
+  gpr: 'gross_potential_rent',
+  gross_rent: 'gross_potential_rent',
+  potential_rent: 'gross_potential_rent',
+
+  // Other income aliases
+  ancillary_income: 'other_income',
+  misc_income: 'other_income',
+
+  // Concession aliases
+  total_concessions: 'concessions',
+  concession_amount: 'concessions',
+
+  // Rent aliases
+  average_rent: 'avg_rent',
+  avg_effective_rent: 'avg_rent',
+  average_sqft: 'avg_sqft',
+  avg_square_feet: 'avg_sqft',
+
+  // Market rent aliases
+  total_market_rent: 'market_rent_total',
+  market_rent: 'market_rent_total',
+  total_actual_rent: 'actual_rent_total',
+  in_place_rent: 'actual_rent_total',
+
+  // EGI component aliases
+  effective_gross_income_calc: 'effective_gross_income',
+  egi: 'effective_gross_income',
+};
+
+/**
+ * Resolves Claude's input keys to canonical formula variable names.
+ * Produces a new inputs object with canonical keys, preserving
+ * any keys that don't have an alias (pass-through).
+ *
+ * Also keeps the original keys so formulas that reference
+ * Claude's naming convention still work.
+ */
+function resolveInputAliases(inputs: Record<string, number>): Record<string, number> {
+  const resolved: Record<string, number> = {};
+
+  for (const [key, value] of Object.entries(inputs)) {
+    // Always keep the original key
+    resolved[key] = value;
+
+    // Add the canonical alias if one exists
+    const canonical = INPUT_KEY_ALIASES[key];
+    if (canonical && resolved[canonical] === undefined) {
+      resolved[canonical] = value;
+    }
+  }
+
+  // Reverse direction: if canonical keys exist but alias keys don't,
+  // also populate common aliases. This handles the case where
+  // Claude uses canonical names but the formula uses shorthand.
+  for (const [alias, canonical] of Object.entries(INPUT_KEY_ALIASES)) {
+    if (resolved[canonical] !== undefined && resolved[alias] === undefined) {
+      resolved[alias] = resolved[canonical];
+    }
+  }
+
+  return resolved;
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -240,7 +377,9 @@ function validateSingleCalculation(
     : calc.formula;
 
   // ── Layer 3: Arithmetic Verification ──
-  const layer3 = runLayer3(formulaToEvaluate, verifiedInputs, calc.ai_result, layer2.tolerance);
+  // C5 FIX: Resolve input aliases before evaluation
+  const resolvedInputs = resolveInputAliases(verifiedInputs);
+  const layer3 = runLayer3(formulaToEvaluate, resolvedInputs, calc.ai_result, layer2.tolerance);
 
   // ── Determine confidence level ──
   const registryEntry = lookupFormula(calc.metric_name);
@@ -309,7 +448,14 @@ function runLayer1(
   let inputsCorrected = 0;
 
   for (const [key, aiValue] of Object.entries(calc.inputs)) {
-    const resolution = resolveInputKey(key, registry);
+    // C5 FIX: Try resolving with the canonical key too
+    const canonicalKey = INPUT_KEY_ALIASES[key] || key;
+    let resolution = resolveInputKey(key, registry);
+
+    // If original key didn't resolve, try canonical key
+    if (!resolution.found && canonicalKey !== key) {
+      resolution = resolveInputKey(canonicalKey, registry);
+    }
 
     if (!resolution.found) {
       corrections.push({
@@ -400,8 +546,12 @@ function runLayer2(
     };
   }
 
+  // C5 FIX: Resolve aliases before checking formula match
+  // so required_inputs check uses both Claude's and canonical keys
+  const resolvedInputs = resolveInputAliases(verifiedInputs);
+
   // Check formula match
-  const matchResult = isFormulaMatch(calc.formula, registryEntry, verifiedInputs);
+  const matchResult = isFormulaMatch(calc.formula, registryEntry, resolvedInputs);
 
   if (matchResult.match) {
     return {
@@ -445,11 +595,25 @@ function runLayer3(
     // Evaluate using mathjs (safe — never uses eval())
     backendResult = safeEvaluate(formula, inputs);
   } catch (error) {
-    // If formula can't be parsed, fall back to accepting Claude's result
-    // but log it as arithmetic-only
-    console.warn(
-      `[math-validator] Could not evaluate formula "${formula}" with inputs ${JSON.stringify(inputs)}: ${error}`
+    // C5 FIX: Better error logging — show available vs. needed keys
+    const formulaVars = formula.match(/\b[a-z_][a-z0-9_]*\b/gi) || [];
+    const inputKeys = Object.keys(inputs);
+    const missing = formulaVars.filter(v =>
+      !inputKeys.includes(v) && isNaN(Number(v))
     );
+
+    if (missing.length > 0) {
+      console.warn(
+        `[math-validator] Formula "${formula}" needs variables [${missing.join(', ')}] ` +
+        `but inputs only have [${inputKeys.slice(0, 15).join(', ')}${inputKeys.length > 15 ? '...' : ''}]`
+      );
+    } else {
+      console.warn(
+        `[math-validator] Could not evaluate formula "${formula}": ${error}`
+      );
+    }
+
+    // Fall back to accepting Claude's result
     return {
       status: 'passed',
       backend_result: aiResult,
@@ -501,6 +665,19 @@ function safeEvaluate(formula: string, inputs: Record<string, number>): number {
     // Use word boundary-aware replacement
     const regex = new RegExp(`\\b${escapeRegex(key)}\\b`, 'g');
     expression = expression.replace(regex, String(value));
+  }
+
+  // Check if any unresolved variables remain
+  const unresolvedVars = expression.match(/\b[a-z_][a-z0-9_]*\b/gi);
+  if (unresolvedVars && unresolvedVars.length > 0) {
+    // Filter out math constants and functions
+    const mathBuiltins = new Set(['pi', 'e', 'inf', 'nan', 'true', 'false']);
+    const genuinelyUnresolved = unresolvedVars.filter(v => !mathBuiltins.has(v.toLowerCase()));
+    if (genuinelyUnresolved.length > 0) {
+      throw new Error(
+        `Undefined symbol${genuinelyUnresolved.length > 1 ? 's' : ''}: ${genuinelyUnresolved.join(', ')}`
+      );
+    }
   }
 
   // Evaluate the pure arithmetic expression

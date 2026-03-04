@@ -23,7 +23,7 @@ export const C = {
   progressTrack: '#DDD9D2',
 } as const;
 
-export type PipelineStage = 'draft' | 'in_review' | 'final_review' | 'ready_to_send' | 'sent';
+export type PipelineStage = 'draft' | 'generating' | 'in_review' | 'final_review' | 'ready_to_send' | 'sent';
 
 export interface PipelineReport {
   id: string;
@@ -37,6 +37,7 @@ export interface PipelineReport {
 
 export const PIPELINE_STAGES: { key: PipelineStage; label: string; hint: string; filterLabel: string }[] = [
   { key: 'draft', label: 'Draft', hint: 'Not yet generated', filterLabel: 'Draft' },
+  { key: 'generating', label: 'Generating', hint: 'Generating report...', filterLabel: 'Generating' },
   { key: 'in_review', label: 'In Review', hint: 'Reviewing content', filterLabel: 'In Review' },
   { key: 'final_review', label: 'Final Review', hint: 'Pending approval', filterLabel: 'Final Review' },
   { key: 'ready_to_send', label: 'Ready to Send', hint: 'Ready for investors', filterLabel: 'Ready to Send' },
@@ -45,6 +46,7 @@ export const PIPELINE_STAGES: { key: PipelineStage; label: string; hint: string;
 
 export const STAGE_BADGE: Record<PipelineStage, { color: string; bg: string; border: string }> = {
   draft: { color: C.gold, bg: `${C.gold}10`, border: `${C.gold}22` },
+  generating: { color: C.accent, bg: `${C.accent}10`, border: `${C.accent}30` },
   in_review: { color: C.accentText, bg: `${C.accentAction}08`, border: `${C.accentAction}18` },
   final_review: { color: C.navy, bg: `${C.navy}08`, border: `${C.navy}18` },
   ready_to_send: { color: C.green, bg: `${C.green}10`, border: `${C.green}22` },
@@ -53,6 +55,7 @@ export const STAGE_BADGE: Record<PipelineStage, { color: string; bg: string; bor
 
 export const STAGE_ACTIONS: Record<PipelineStage, { label: string; icon: string } | null> = {
   draft: { label: 'Generate Report', icon: 'sparkle' },
+  generating: null, // No action — generation in progress
   in_review: { label: 'Submit for Approval', icon: 'arrowR' },
   final_review: { label: 'Approve', icon: 'check' },
   ready_to_send: { label: 'Mark as Sent', icon: 'send' },
@@ -61,6 +64,7 @@ export const STAGE_ACTIONS: Record<PipelineStage, { label: string; icon: string 
 
 export const STAGE_STAT_COLORS: Record<PipelineStage, string> = {
   draft: C.gold,
+  generating: C.accent,
   in_review: C.accentAction,
   final_review: C.navy,
   ready_to_send: C.green,
@@ -72,7 +76,8 @@ export function getStageIndex(stage: PipelineStage): number {
 }
 
 export function getStageProgress(stage: PipelineStage): number {
-  return (getStageIndex(stage) / 4) * 100;
+  const total = PIPELINE_STAGES.length - 1;
+  return (getStageIndex(stage) / total) * 100;
 }
 
 export function formatTimeAgo(dateString: string): string {
