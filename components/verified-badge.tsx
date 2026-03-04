@@ -125,149 +125,65 @@ export default function VerifiedBadge({ validationLog }: VerifiedBadgeProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
-  const [mobileExpanded, setMobileExpanded] = useState(false);
   const isMobile = useIsMobile();
 
-  if (!validationLog || validationLog.total_calculations === 0) return null;
+  if (!validationLog || !validationLog.total_calculations) return null;
 
-  const { total_calculations, passed, overridden, details } = validationLog;
+  const { total_calculations, passed, overridden } = validationLog;
+  const details = validationLog.details || [];
   const passRate = total_calculations > 0 ? Math.round((passed / total_calculations) * 100) : 0;
 
   // Group details by section
   const sectionGroups = new Map<string, ValidationDetail[]>();
-  for (const d of details) {
-    const key = d.section_id;
-    if (!sectionGroups.has(key)) sectionGroups.set(key, []);
-    sectionGroups.get(key)!.push(d);
+  if (Array.isArray(details)) {
+    for (const d of details) {
+      if (!d || !d.section_id) continue;
+      const key = d.section_id;
+      if (!sectionGroups.has(key)) sectionGroups.set(key, []);
+      sectionGroups.get(key)!.push(d);
+    }
   }
 
   // Confidence breakdown
   const confidenceCounts: Record<string, number> = {};
-  for (const d of details) {
-    confidenceCounts[d.confidence] = (confidenceCounts[d.confidence] || 0) + 1;
+  if (Array.isArray(details)) {
+    for (const d of details) {
+      if (!d || !d.confidence) continue;
+      confidenceCounts[d.confidence] = (confidenceCounts[d.confidence] || 0) + 1;
+    }
   }
 
   return (
     <div style={{ fontFamily: 'var(--font-body, "DM Sans", system-ui, sans-serif)' }}>
 
-      {/* ═══════════════════════════════════════════════════════
-          MOBILE: Compact single-line bar (≤768px)
-          ═══════════════════════════════════════════════════════ */}
-      {isMobile && (
-        <>
-          {/* Compact bar — always visible on mobile */}
-          <div
-            onClick={() => setMobileExpanded(!mobileExpanded)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              padding: '8px 0',
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{
-              width: 22, height: 22, borderRadius: '50%',
-              border: `1.5px solid ${V.goldWarm}60`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}>
-              <ShieldSolidIcon size={11} color={V.gold} />
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
-              <span style={{ fontSize: 11, fontWeight: 600, color: V.green }}>Verified</span>
-              <div style={{ width: 1, height: 12, background: V.borderL }} />
-              <span style={{ fontSize: 10, color: V.textSoft }}>
-                <strong style={{ color: V.textMid }}>{total_calculations}</strong> checks{' · '}
-                <strong style={{ color: V.green }}>100%</strong> accurate
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0 }}>
-              <span style={{ fontSize: 10, fontWeight: 600, color: V.accent }}>
-                {mobileExpanded ? 'Hide' : 'Details'}
-              </span>
-              <div style={{
-                transition: 'transform 0.25s cubic-bezier(0.22, 1, 0.36, 1)',
-                transform: mobileExpanded ? 'rotate(180deg)' : 'rotate(0deg)',
-                display: 'flex',
-              }}>
-                <ChevronIcon />
-              </div>
-            </div>
-          </div>
+      {/* Gold seal — always visible */}
+      <GoldSealBadge totalCalculations={total_calculations} isMobile={isMobile} />
 
-          {/* Expanded mobile details — gold seal + banner + audit trail */}
-          {mobileExpanded && (
-            <div style={{ animation: 'vbFadeIn 0.3s cubic-bezier(0.22, 1, 0.36, 1) both' }}>
-              {/* Gold seal */}
-              <GoldSealBadge totalCalculations={total_calculations} isMobile={true} />
+      {/* Banner strip + audit trail toggle — always visible */}
+      <BannerStrip
+        totalCalculations={total_calculations}
+        passed={passed}
+        overridden={overridden}
+        isOpen={isOpen}
+        onToggle={() => setIsOpen(!isOpen)}
+        isMobile={isMobile}
+      />
 
-              {/* Banner strip + audit trail toggle */}
-              <BannerStrip
-                totalCalculations={total_calculations}
-                passed={passed}
-                overridden={overridden}
-                isOpen={isOpen}
-                onToggle={() => setIsOpen(!isOpen)}
-                isMobile={true}
-              />
-
-              {/* Audit trail */}
-              {isOpen && (
-                <AuditTrailPanel
-                  totalCalculations={total_calculations}
-                  passed={passed}
-                  overridden={overridden}
-                  passRate={passRate}
-                  confidenceCounts={confidenceCounts}
-                  sectionGroups={sectionGroups}
-                  expandedSection={expandedSection}
-                  setExpandedSection={setExpandedSection}
-                  showHelp={showHelp}
-                  setShowHelp={setShowHelp}
-                  isMobile={true}
-                />
-              )}
-            </div>
-          )}
-        </>
-      )}
-
-      {/* ═══════════════════════════════════════════════════════
-          DESKTOP: Full layout (>768px)
-          ═══════════════════════════════════════════════════════ */}
-      {!isMobile && (
-        <>
-          {/* Gold seal — always visible */}
-          <GoldSealBadge totalCalculations={total_calculations} isMobile={false} />
-
-          {/* Banner strip + audit trail toggle — always visible */}
-          <BannerStrip
-            totalCalculations={total_calculations}
-            passed={passed}
-            overridden={overridden}
-            isOpen={isOpen}
-            onToggle={() => setIsOpen(!isOpen)}
-            isMobile={false}
-          />
-
-          {/* Audit trail — expandable */}
-          {isOpen && (
-            <AuditTrailPanel
-              totalCalculations={total_calculations}
-              passed={passed}
-              overridden={overridden}
-              passRate={passRate}
-              confidenceCounts={confidenceCounts}
-              sectionGroups={sectionGroups}
-              expandedSection={expandedSection}
-              setExpandedSection={setExpandedSection}
-              showHelp={showHelp}
-              setShowHelp={setShowHelp}
-              isMobile={false}
-            />
-          )}
-        </>
+      {/* Audit trail — expandable */}
+      {isOpen && (
+        <AuditTrailPanel
+          totalCalculations={total_calculations}
+          passed={passed}
+          overridden={overridden}
+          passRate={passRate}
+          confidenceCounts={confidenceCounts}
+          sectionGroups={sectionGroups}
+          expandedSection={expandedSection}
+          setExpandedSection={setExpandedSection}
+          showHelp={showHelp}
+          setShowHelp={setShowHelp}
+          isMobile={isMobile}
+        />
       )}
 
       <style>{`
@@ -605,7 +521,7 @@ function AuditTrailPanel({
       <div style={{ maxHeight: isMobile ? 320 : 480, overflowY: 'auto' }}>
         {Array.from(sectionGroups.entries()).map(([sectionId, calcs]) => {
           const isExpanded = expandedSection === sectionId;
-          const sectionPassed = calcs.filter(c => c.layer_3.status === 'passed' && c.layer_1.status !== 'corrected').length;
+          const sectionPassed = calcs.filter(c => c.layer_3?.status === 'passed' && c.layer_1?.status !== 'corrected').length;
           const sectionTotal = calcs.length;
           const allPassed = sectionPassed === sectionTotal;
 
@@ -686,21 +602,23 @@ function StatBox({ label, value, color, compact }: { label: string; value: strin
 }
 
 function CalcRow({ calc, isMobile }: { calc: ValidationDetail; isMobile: boolean }) {
-  const l1 = calc.layer_1;
-  const l2 = calc.layer_2;
-  const l3 = calc.layer_3;
+  const l1 = calc.layer_1 || { status: 'unknown', inputs_verified: 0, inputs_total: 0, corrections: [] };
+  const l2 = calc.layer_2 || { status: 'unknown', formula_match: false, claude_formula: '' };
+  const l3 = calc.layer_3 || { status: 'unknown', difference: 0, ai_value: 0, verified_value: 0 };
 
   const l1Label = l1.status === 'corrected'
-    ? `→ ${l1.inputs_verified}/${l1.inputs_total} verified`
-    : `✓ ${l1.inputs_verified}/${l1.inputs_total} verified`;
+    ? `→ ${l1.inputs_verified ?? 0}/${l1.inputs_total ?? 0} verified`
+    : `✓ ${l1.inputs_verified ?? 0}/${l1.inputs_total ?? 0} verified`;
   const l2Label = l2.formula_match ? '✓ Matched' : '→ Overridden';
   const l3Label = l3.status === 'passed'
     ? '✓ Exact'
-    : `→ ±${formatNumber(Math.abs(l3.difference))}`;
+    : `→ ±${formatNumber(Math.abs(l3.difference ?? 0))}`;
 
   const l1Color = l1.status === 'corrected' ? V.gold : V.green;
   const l2Color = l2.formula_match ? V.green : V.gold;
   const l3Color = l3.status === 'passed' ? V.green : V.gold;
+
+  const finalVal = calc.final_value ?? 0;
 
   return (
     <div style={{
@@ -713,13 +631,13 @@ function CalcRow({ calc, isMobile }: { calc: ValidationDetail; isMobile: boolean
         flexWrap: isMobile ? 'wrap' : 'nowrap',
         gap: isMobile ? 4 : 0,
       }}>
-        <span style={{ fontSize: isMobile ? 12 : 13, fontWeight: 600, color: V.text }}>{calc.metric_name}</span>
+        <span style={{ fontSize: isMobile ? 12 : 13, fontWeight: 600, color: V.text }}>{calc.metric_name || 'Unknown'}</span>
         <span style={{
           fontSize: isMobile ? 12 : 13, fontWeight: 600,
-          color: calc.final_value < 0 ? V.red : V.green,
+          color: finalVal < 0 ? V.red : V.green,
           fontFamily: 'var(--font-display, "Newsreader", Georgia, serif)',
         }}>
-          {calc.final_value < 0 ? '-' : ''}${formatNumber(Math.abs(calc.final_value))}
+          {finalVal < 0 ? '-' : ''}${formatNumber(Math.abs(finalVal))}
         </span>
       </div>
 
@@ -730,12 +648,14 @@ function CalcRow({ calc, isMobile }: { calc: ValidationDetail; isMobile: boolean
       </div>
 
       <div style={{ marginTop: 6, display: 'flex', gap: 6 }}>
-        <Tag label={calc.confidence} color={
-          calc.confidence === '3-layer' ? V.green
-          : calc.confidence === '2.5-layer' ? V.accent
-          : calc.confidence === '2-layer' ? V.gold
-          : V.textSoft
-        } compact={isMobile} />
+        {calc.confidence && (
+          <Tag label={calc.confidence} color={
+            calc.confidence === '3-layer' ? V.green
+            : calc.confidence === '2.5-layer' ? V.accent
+            : calc.confidence === '2-layer' ? V.gold
+            : V.textSoft
+          } compact={isMobile} />
+        )}
         {calc.material_override && <Tag label="Material override" color={V.red} compact={isMobile} />}
       </div>
     </div>
@@ -824,5 +744,6 @@ function formatSectionName(id: string): string {
 }
 
 function formatNumber(n: number): string {
+  if (n == null || isNaN(n)) return '0';
   return n.toLocaleString('en-US', { maximumFractionDigits: 2 });
 }

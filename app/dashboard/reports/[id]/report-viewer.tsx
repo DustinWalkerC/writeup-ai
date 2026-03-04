@@ -151,20 +151,6 @@ const VIEWER_MOBILE_CSS = `
     min-width: 240px !important;
   }
 
-  /* ── Tap to view overlay on paper ── */
-  .rv-tap-overlay {
-    position: absolute !important;
-    bottom: 16px !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    z-index: 5 !important;
-    margin-bottom: 0 !important;
-    box-shadow: 0 4px 16px rgba(0,0,0,0.12) !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
-    background: rgba(255,255,255,0.92) !important;
-  }
-
   /* ── Verified badge area ── */
   .rv-verified-row {
     padding: 8px 12px !important;
@@ -458,8 +444,12 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
   useEffect(() => {
     function calcScale() {
       if (!scaleWrapRef.current) return
-      const containerWidth = scaleWrapRef.current.clientWidth
-      const newScale = containerWidth < 960 ? containerWidth / 960 : 1
+      const el = scaleWrapRef.current
+      const style = getComputedStyle(el)
+      const padL = parseFloat(style.paddingLeft) || 0
+      const padR = parseFloat(style.paddingRight) || 0
+      const contentWidth = el.clientWidth - padL - padR
+      const newScale = contentWidth < 960 ? contentWidth / 960 : 1
       setPaperScale(newScale)
 
       // Measure actual paper height after render, set wrapper height
@@ -947,8 +937,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
             className="rv-paper-scale-wrap"
             style={{ maxWidth: 960, margin: '0 auto', padding: '0 16px' }}
           >
-            {/* "Tap to view full report" hint — overlaid on scaled paper, only visible when scaled */}
-            {/* Scaled paper — shows full desktop layout miniaturized */}
+            {/* Scaled paper — full width of container */}
             <div style={{ overflow: 'hidden', height: scaledHeight ?? 'auto', position: 'relative' }}>
               <div
                 ref={paperRef}
@@ -969,26 +958,25 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
               >
                 {reportContentJSX}
               </div>
+              {/* Gradient fade + "Tap to view" — fixed height at bottom of paper */}
               {paperScale < 0.95 && (
-                <button
-                  className="rv-tap-overlay"
-                  onClick={(e) => { e.stopPropagation(); setShowFullscreen(true) }}
+                <div
+                  onClick={() => setShowFullscreen(true)}
                   style={{
-                    position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    gap: 6, padding: '8px 20px', zIndex: 5,
-                    background: 'rgba(255,255,255,0.92)', border: `1px solid ${W.border}`, borderRadius: 10,
-                    fontSize: 12, fontWeight: 600, color: W.accent, cursor: 'pointer',
-                    boxShadow: '0 4px 16px rgba(0,0,0,0.10)',
-                    backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)',
-                    whiteSpace: 'nowrap',
+                    position: 'absolute', bottom: 0, left: 0, right: 0,
+                    height: 80,
+                    background: `linear-gradient(to top, ${W.bgAlt} 0%, ${W.bgAlt}00 100%)`,
+                    display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: 6,
+                    paddingBottom: 14,
+                    fontSize: 12, fontWeight: 600, color: W.accent,
+                    cursor: 'pointer',
                   }}
                 >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.accent} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke={W.accent} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7" />
                   </svg>
                   Tap to view full report
-                </button>
+                </div>
               )}
             </div>
           </div>
