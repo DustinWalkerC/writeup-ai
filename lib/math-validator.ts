@@ -603,12 +603,12 @@ function runLayer3(
     );
 
     if (missing.length > 0) {
-      console.warn(
+      if (process.env.NODE_ENV === 'development') console.warn(
         `[math-validator] Formula "${formula}" needs variables [${missing.join(', ')}] ` +
         `but inputs only have [${inputKeys.slice(0, 15).join(', ')}${inputKeys.length > 15 ? '...' : ''}]`
       );
     } else {
-      console.warn(
+      if (process.env.NODE_ENV === 'development') console.warn(
         `[math-validator] Could not evaluate formula "${formula}": ${error}`
       );
     }

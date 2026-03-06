@@ -148,5 +148,5 @@ export function formatCurrency(n: number): string {
 
 // ─── Free tier fallback (no subscription) ───
 
-export const FREE_PROPERTY_LIMIT = 2  // Enough to try the product
+export const FREE_PROPERTY_LIMIT = 1  // Enough to try the product
 export const FREE_USER_LIMIT = 1

@@ -55,6 +55,11 @@ interface GeneratedSection {
   skipReason: string | null
 }
 
+type SectionMap = Record<
+  string,
+  { title: string; content: string; chart_html?: string; chart_data?: ChartData; order: number; metrics?: GeneratedSection['metrics'] }
+>
+
 type Props = {
   reportId: string
   report: {
@@ -94,13 +99,6 @@ const W = {
 
 /* ═══════════════════════════════════════════════════════════════════
    MOBILE CSS
-   
-   Fixes:
-   1. Toolbar stacks nicely, export dropdown right-aligned + constrained
-   2. Verified badge audit cards scroll horizontally
-   3. KPI metric cards + charts scroll horizontally in edit mode
-   4. Section editor regen panel fully stacked
-   5. Fullscreen = Reader Mode with reflowed text
    ═══════════════════════════════════════════════════════════════════ */
 const VIEWER_MOBILE_CSS = `
 @media (max-width: 768px) {
@@ -155,7 +153,6 @@ const VIEWER_MOBILE_CSS = `
   .rv-verified-row {
     padding: 8px 12px !important;
   }
-  /* Make the audit trail stat cards scroll horizontally */
   .rv-verified-row [data-metrics],
   .rv-verified-row table {
     display: block !important;
@@ -227,7 +224,6 @@ const VIEWER_MOBILE_CSS = `
     min-width: 0 !important;
     justify-content: center !important;
   }
-  /* Edit/Regen toolbar buttons */
   .se-toolbar {
     flex-wrap: wrap !important;
     gap: 6px !important;
@@ -327,7 +323,7 @@ function separateContentLegacy(content: string): { narrative: string; chartHTML:
   return { narrative: narrative.trim(), chartHTML: chartParts.join('\n') }
 }
 
-// ── Markdown → HTML converter (unchanged) ──
+// ── Markdown → HTML converter ──
 
 function renderNarrativeContent(text: string): string {
   if (!text || !text.trim()) return ''
@@ -347,7 +343,7 @@ function renderNarrativeContent(text: string): string {
   return html
 }
 
-// ── Metric Card Renderer (unchanged) ──
+// ── Metric Card Renderer ──
 
 function renderMetricCards(metrics: GeneratedSection['metrics'], accentColor?: string): string {
   if (!metrics || metrics.length === 0) return ''
@@ -375,7 +371,7 @@ function renderMetricCards(metrics: GeneratedSection['metrics'], accentColor?: s
   return `<table role="presentation" cellpadding="0" cellspacing="8" border="0" data-metrics="true" style="width:100%;border-collapse:separate;margin:16px 0;table-layout:fixed;page-break-inside:avoid;"><tr>${cells}</tr></table>`
 }
 
-// ── Formatted Section Renderer (unchanged — used in export) ──
+// ── Formatted Section Renderer (used in export) ──
 
 function renderFormattedSections(
   orderedSections: Array<{
@@ -414,12 +410,14 @@ function renderFormattedSections(
   return sectionsHTML + disclaimerHTML
 }
 
-// ── Main Component ──
+// ═══════════════════════════════════════════════════════════════════
+// MAIN COMPONENT
+// ═══════════════════════════════════════════════════════════════════
 
 export function ReportViewer({ reportId, report, userSettings }: Props) {
   const [viewMode, setViewMode] = useState<ViewMode>('formatted')
   const [regeneratingSection, setRegeneratingSection] = useState<string | null>(null)
-  const [sections, setSections] = useState(() =>
+  const [sections, setSections] = useState<SectionMap>(() =>
     parseStructuredContent(report.content as StructuredContent, report.narrative, report.generated_sections)
   )
   const [isExporting, setIsExporting] = useState(false)
@@ -433,14 +431,18 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
   const [emailPreviewLoading, setEmailPreviewLoading] = useState(false)
   const [emailPreviewSize, setEmailPreviewSize] = useState<number | null>(null)
 
-  // ── NEW: fullscreen report preview + scaled PDF state ──
+  // Fullscreen report preview + scaled PDF state
   const [showFullscreen, setShowFullscreen] = useState(false)
   const scaleWrapRef = useRef<HTMLDivElement>(null)
   const paperRef = useRef<HTMLDivElement>(null)
   const [paperScale, setPaperScale] = useState(1)
   const [scaledHeight, setScaledHeight] = useState<number | null>(null)
 
-  // Calculate scale factor + resulting height for PDF preview on mobile
+  // ── Ref to always have current sections (avoids stale closures) ──
+  const sectionsRef = useRef(sections)
+  useEffect(() => { sectionsRef.current = sections }, [sections])
+
+  // ── Calculate scale factor + height for PDF preview on mobile ──
   useEffect(() => {
     function calcScale() {
       if (!scaleWrapRef.current) return
@@ -452,10 +454,9 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       const newScale = contentWidth < 960 ? contentWidth / 960 : 1
       setPaperScale(newScale)
 
-      // Measure actual paper height after render, set wrapper height
       requestAnimationFrame(() => {
         if (paperRef.current && newScale < 1) {
-          const realH = paperRef.current.getBoundingClientRect().height / newScale // undo scale to get natural height
+          const realH = paperRef.current.getBoundingClientRect().height / newScale
           setScaledHeight(realH * newScale)
         } else {
           setScaledHeight(null)
@@ -465,7 +466,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     calcScale()
     window.addEventListener('resize', calcScale)
     return () => window.removeEventListener('resize', calcScale)
-  }, [viewMode, sections]) // re-calc if sections change (content length changes)
+  }, [viewMode, sections])
 
   useEffect(() => {
     async function fetchExportTemplate() {
@@ -504,21 +505,15 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
   const hasGeneratedSections =
     report.generated_sections && Array.isArray(report.generated_sections) && report.generated_sections.length > 0
 
-  // ── Parse content (unchanged) ──
+  // ── Parse content ──
 
   function parseStructuredContent(
     content: StructuredContent | null,
     fallbackNarrative: string | null,
     generatedSections?: GeneratedSection[] | null
-  ): Record<
-    string,
-    { title: string; content: string; chart_html?: string; chart_data?: ChartData; order: number; metrics?: GeneratedSection['metrics'] }
-  > {
+  ): SectionMap {
     if (generatedSections && Array.isArray(generatedSections) && generatedSections.length > 0) {
-      const result: Record<
-        string,
-        { title: string; content: string; chart_html?: string; chart_data?: ChartData; order: number; metrics?: GeneratedSection['metrics'] }
-      > = {}
+      const result: SectionMap = {}
       generatedSections
         .filter((s) => s.included)
         .forEach((s, index) => {
@@ -582,15 +577,61 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     return title.toLowerCase().replace(/[^a-z0-9]+/g, '_')
   }
 
-  // ── Section actions (unchanged) ──
+  // ═══════════════════════════════════════════════════════════════
+  // FIX: Sync local sections state → reports.generated_sections in DB
+  // This is the root cause of "edits disappear after navigation"
+  // ═══════════════════════════════════════════════════════════════
+  const syncSectionsToDb = useCallback(
+    async (updatedSections: SectionMap) => {
+      try {
+        const generated_sections = Object.entries(updatedSections)
+          .filter(([, s]) => s.content)
+          .sort(([, a], [, b]) => a.order - b.order)
+          .map(([id, s]) => ({
+            id,
+            title: s.title,
+            content: s.content,
+            chart_html: s.chart_html || undefined,
+            chart_data: s.chart_data || undefined,
+            metrics: s.metrics || undefined,
+            included: true,
+            skipReason: null,
+          }))
+
+        const res = await fetch(`/api/reports/${reportId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ generated_sections }),
+        })
+
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}))
+          console.error('[ReportViewer] Sync failed:', res.status, err)
+        }
+      } catch (err) {
+        console.error('[ReportViewer] Failed to sync sections to DB:', err)
+      }
+    },
+    [reportId]
+  )
+
+  // ── Section actions ──
 
   const handleSaveSection = useCallback(
     async (sectionId: string, content: string) => {
       const result = await saveSection(reportId, sectionId, content)
-      if (result.success) setSections((prev) => ({ ...prev, [sectionId]: { ...prev[sectionId], content } }))
-      else throw new Error(result.error)
+      if (result.success) {
+        // Use ref to get current sections — avoids stale closure
+        const current = sectionsRef.current
+        const updated = { ...current, [sectionId]: { ...current[sectionId], content } }
+        setSections(updated)
+        // Persist full generated_sections array to reports table
+        await syncSectionsToDb(updated)
+      } else {
+        throw new Error(result.error)
+      }
     },
-    [reportId]
+    [reportId, syncSectionsToDb]
   )
 
   const handleRegenerateSection = useCallback(
@@ -598,17 +639,23 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       setRegeneratingSection(sectionId)
       try {
         const result = await regenerateSection(reportId, sectionId, instructions)
-        if (result.success && result.content)
-          setSections((prev) => ({ ...prev, [sectionId]: { ...prev[sectionId], content: result.content! } }))
-        else alert(result.error || 'Failed to regenerate section')
+        if (result.success && result.content) {
+          const current = sectionsRef.current
+          const updated = { ...current, [sectionId]: { ...current[sectionId], content: result.content } }
+          setSections(updated)
+          // Persist regenerated content to DB
+          await syncSectionsToDb(updated)
+        } else {
+          alert(result.error || 'Failed to regenerate section')
+        }
       } finally {
         setRegeneratingSection(null)
       }
     },
-    [reportId]
+    [reportId, syncSectionsToDb]
   )
 
-  // ── Computed (unchanged) ──
+  // ── Computed ──
 
   const orderedSections = useMemo(() => {
     const result: Array<{
@@ -619,9 +666,9 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       const def = REPORT_SECTIONS.find((rs) => rs.id === id)
       result.push({
         id, title: section.title, content: section.content,
-        chart_html: (section as any).chart_html, chart_data: (section as any).chart_data,
+        chart_html: section.chart_html, chart_data: section.chart_data,
         order: section.order, description: def?.description || '',
-        required: def?.required || false, metrics: (section as any).metrics,
+        required: def?.required || false, metrics: section.metrics,
       })
     }
     for (const def of REPORT_SECTIONS) {
@@ -632,6 +679,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
 
   const handleDragStart = useCallback((index: number) => setDraggedIndex(index), [])
   const handleDragOver = useCallback((e: React.DragEvent, index: number) => { e.preventDefault(); setDragOverIndex(index) }, [])
+
   const handleDrop = useCallback(
     async (targetIndex: number) => {
       if (draggedIndex === null || draggedIndex === targetIndex) { setDraggedIndex(null); setDragOverIndex(null); return }
@@ -639,29 +687,46 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       const newOrder = [...activeSections]
       const [moved] = newOrder.splice(draggedIndex, 1)
       newOrder.splice(targetIndex, 0, moved)
-      const newSections = { ...sections }
+      const newSections = { ...sectionsRef.current }
       newOrder.forEach((s, i) => { if (newSections[s.id]) newSections[s.id] = { ...newSections[s.id], order: i + 1 } })
-      setSections(newSections); setDraggedIndex(null); setDragOverIndex(null)
+      setSections(newSections)
+      setDraggedIndex(null)
+      setDragOverIndex(null)
       await reorderSections(reportId, newOrder.map((s) => s.id))
+      // Persist reorder to DB
+      await syncSectionsToDb(newSections)
     },
-    [draggedIndex, orderedSections, sections, reportId]
+    [draggedIndex, orderedSections, reportId, syncSectionsToDb]
   )
+
   const handleDragEnd = useCallback(() => { setDraggedIndex(null); setDragOverIndex(null) }, [])
 
   const toggleSection = useCallback((sectionId: string) => {
-    setExpandedSections((prev) => { const next = new Set(prev); if (next.has(sectionId)) next.delete(sectionId); else next.add(sectionId); return next })
+    setExpandedSections((prev) => {
+      const next = new Set(prev)
+      if (next.has(sectionId)) next.delete(sectionId)
+      else next.add(sectionId)
+      return next
+    })
   }, [])
 
   const handleRemoveSection = useCallback(async (sectionId: string) => {
-    setSections((prev) => { const u = { ...prev }; delete u[sectionId]; return u })
+    const current = sectionsRef.current
+    const updated = { ...current }
+    delete updated[sectionId]
+    setSections(updated)
     await removeSection(reportId, sectionId)
-  }, [reportId])
+    // Persist removal to DB
+    await syncSectionsToDb(updated)
+  }, [reportId, syncSectionsToDb])
 
   const handleAddSection = useCallback(async (sectionId: string, sectionTitle: string) => {
-    const maxOrder = Math.max(...Object.values(sections).map((s) => s.order), 0)
-    setSections((prev) => ({ ...prev, [sectionId]: { title: sectionTitle, content: '', order: maxOrder + 1 } }))
+    const current = sectionsRef.current
+    const maxOrder = Math.max(...Object.values(current).map((s) => s.order), 0)
+    const updated = { ...current, [sectionId]: { title: sectionTitle, content: '', order: maxOrder + 1 } }
+    setSections(updated)
     await addSection(reportId, sectionId, sectionTitle)
-  }, [reportId, sections])
+  }, [reportId])
 
   const previewNarrative = useMemo(
     () => orderedSections.filter((s) => s.content).map((s) => `## ${s.title}\n\n${s.content}`).join('\n\n'),
@@ -676,7 +741,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     [report, sections, previewNarrative, userSettings]
   )
 
-  // ── Export handlers (unchanged) ──
+  // ── Export handlers ──
 
   const propertyName = report.property?.name || 'Property'
   const monthNum = monthNameToNumber(report.month)
@@ -731,14 +796,22 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     if (!emailPreviewHTML) return
     try {
       const blob = new Blob([emailPreviewHTML], { type: 'text/html' })
-      // @ts-ignore
-      const clipboardItem = new ClipboardItem({ 'text/html': blob, 'text/plain': new Blob([emailPreviewHTML], { type: 'text/plain' }) })
-      // @ts-ignore
+      const clipboardItem = new ClipboardItem({
+        'text/html': blob,
+        'text/plain': new Blob([emailPreviewHTML], { type: 'text/plain' }),
+      })
       await navigator.clipboard.write([clipboardItem])
-      setExportStatus('Copied! Paste directly into your email.'); setTimeout(() => setExportStatus(null), 3000)
+      setExportStatus('Copied! Paste directly into your email.')
+      setTimeout(() => setExportStatus(null), 3000)
     } catch {
-      try { await navigator.clipboard.writeText(emailPreviewHTML); setExportStatus('Copied as text — paste into HTML source editor'); setTimeout(() => setExportStatus(null), 3000) }
-      catch { setExportStatus('Copy failed — try Download instead'); setTimeout(() => setExportStatus(null), 3000) }
+      try {
+        await navigator.clipboard.writeText(emailPreviewHTML)
+        setExportStatus('Copied as text — paste into HTML source editor')
+        setTimeout(() => setExportStatus(null), 3000)
+      } catch {
+        setExportStatus('Copy failed — try Download instead')
+        setTimeout(() => setExportStatus(null), 3000)
+      }
     }
   }
 
@@ -768,7 +841,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     return null
   }, [orderedSections, accentColor, userSettings?.custom_disclaimer, hasGeneratedSections, chartBrandColors])
 
-  // ── Shared report content renderer (used in both preview + fullscreen) ──
+  // ── Shared report content renderer (preview + fullscreen) ──
   const reportContentJSX = hasGeneratedSections ? (
     <div>
       {orderedSections
@@ -832,7 +905,9 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
     <ReportTemplate data={templateData} />
   )
 
-  // ── Render ──
+  // ═══════════════════════════════════════════════════════════════
+  // RENDER
+  // ═══════════════════════════════════════════════════════════════
 
   return (
     <div style={{ background: W.bg, border: `1px solid ${W.border}`, borderRadius: 14, overflow: 'hidden' }}>
@@ -858,8 +933,8 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
               border: `1px solid ${W.border}`, background: W.bg,
               cursor: 'pointer', flexShrink: 0, transition: 'all 0.2s',
             }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = W.bgAlt; e.currentTarget.style.borderColor = W.textMuted; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = W.bg; e.currentTarget.style.borderColor = W.border; }}
+            onMouseEnter={(e) => { e.currentTarget.style.background = W.bgAlt; e.currentTarget.style.borderColor = W.textMuted }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = W.bg; e.currentTarget.style.borderColor = W.border }}
             title="Go back"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={W.textMid} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -937,7 +1012,6 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
             className="rv-paper-scale-wrap"
             style={{ maxWidth: 960, margin: '0 auto', padding: '0 16px' }}
           >
-            {/* Scaled paper — full width of container */}
             <div style={{ overflow: 'hidden', height: scaledHeight ?? 'auto', position: 'relative' }}>
               <div
                 ref={paperRef}
@@ -958,7 +1032,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
               >
                 {reportContentJSX}
               </div>
-              {/* Gradient fade + "Tap to view" — fixed height at bottom of paper */}
+              {/* Gradient fade + "Tap to view" */}
               {paperScale < 0.95 && (
                 <div
                   onClick={() => setShowFullscreen(true)}
@@ -982,7 +1056,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
           </div>
         )}
 
-        {/* ═══ EDIT SECTIONS VIEW — with scrollable metrics + charts ═══ */}
+        {/* ═══ EDIT SECTIONS VIEW ═══ */}
         {viewMode === 'sections' && (
           <div style={{ maxWidth: 960, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 12 }}>
             {orderedSections
@@ -1174,7 +1248,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         )}
       </div>
 
-      {/* ── Export Container (hidden, unchanged) ── */}
+      {/* ── Export Container (hidden) ── */}
       <div style={{ position: 'fixed', left: '-9999px', top: 0, width: '800px', pointerEvents: 'none', background: '#ffffff' }} aria-hidden="true">
         <div ref={exportRef} style={{ width: '800px', boxSizing: 'border-box', padding: '0 16px', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif', background: '#ffffff', color: '#1e293b' }}>
           {exportHTML ? <div dangerouslySetInnerHTML={{ __html: exportHTML }} /> : <ReportTemplate data={templateData} />}
@@ -1184,7 +1258,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
       {/* ═══ FULLSCREEN REPORT — Reader Mode ═══ */}
       {showFullscreen && (
         <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', flexDirection: 'column', background: '#FFFFFF' }}>
-          {/* ── Sticky top bar ── */}
+          {/* Sticky top bar */}
           <div style={{
             flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'space-between',
             padding: '10px 16px',
@@ -1212,7 +1286,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
             </div>
           </div>
 
-          {/* ── Scrollable reader content ── */}
+          {/* Scrollable reader content */}
           <div style={{ flex: 1, overflow: 'auto', WebkitOverflowScrolling: 'touch' }}>
             {/* Report header band */}
             {hasGeneratedSections && (
@@ -1296,7 +1370,7 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
         </div>
       )}
 
-      {/* ── Email Preview Modal (unchanged) ── */}
+      {/* ── Email Preview Modal ── */}
       {emailPreviewHTML && (
         <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}
           onClick={(e) => { if (e.target === e.currentTarget) setEmailPreviewHTML(null) }}>
@@ -1319,28 +1393,50 @@ export function ReportViewer({ reportId, report, userSettings }: Props) {
                 </div>
               </div>
               <div className="rv-email-actions" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <div className="flex items-center gap-2">
-                  {exportStatus && (
-                    <span className="text-xs font-medium px-3 py-1.5 rounded-full" style={{ color: '#047857', backgroundColor: '#ECFDF5' }}>{exportStatus}</span>
-                  )}
-                  <button onClick={handleCopyEmailHTML}
-                    className="flex items-center gap-2 px-4 py-2 text-white rounded-lg font-medium text-sm transition-colors hover:opacity-90"
-                    style={{ backgroundColor: '#00B7DB' }}>
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
-                    </svg>
-                    Copy HTML
-                  </button>
-                  <button onClick={handleDownloadEmailHTML}
-                    className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 font-medium text-sm transition-colors">
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                    </svg>
-                    Download
-                  </button>
-                </div>
+                {exportStatus && (
+                  <span style={{
+                    fontSize: 12, fontWeight: 500, padding: '6px 12px', borderRadius: 100,
+                    color: '#047857', background: '#ECFDF5',
+                  }}>{exportStatus}</span>
+                )}
+                <button
+                  onClick={handleCopyEmailHTML}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    padding: '8px 16px', fontSize: 13, fontWeight: 600,
+                    color: '#fff', background: W.accent, border: 'none',
+                    borderRadius: 8, cursor: 'pointer', transition: 'opacity 0.15s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.opacity = '0.9')}
+                  onMouseLeave={(e) => (e.currentTarget.style.opacity = '1')}
+                >
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3" />
+                  </svg>
+                  Copy HTML
+                </button>
+                <button
+                  onClick={handleDownloadEmailHTML}
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: 8,
+                    padding: '8px 12px', fontSize: 13, fontWeight: 600,
+                    color: W.textMid, background: W.bg, border: `1px solid ${W.border}`,
+                    borderRadius: 8, cursor: 'pointer', transition: 'background 0.15s',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = W.bgAlt)}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = W.bg)}
+                >
+                  <svg width="16" height="16" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                  </svg>
+                  Download
+                </button>
                 <button onClick={() => setEmailPreviewHTML(null)}
-                  style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', border: 'none', background: 'transparent', cursor: 'pointer', color: W.textMuted, borderRadius: 8, transition: 'color 0.15s' }}
+                  style={{
+                    width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    border: 'none', background: 'transparent', cursor: 'pointer', color: W.textMuted,
+                    borderRadius: 8, transition: 'color 0.15s',
+                  }}
                   onMouseEnter={(e) => (e.currentTarget.style.color = W.text)}
                   onMouseLeave={(e) => (e.currentTarget.style.color = W.textMuted)}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

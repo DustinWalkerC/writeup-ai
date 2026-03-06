@@ -16,20 +16,15 @@ function devWarn(...args: any[]) {
 }
 
 // ─────────────────────────────────────────────────────
-// Progress writer — throttled to every 3 seconds
+// Progress writer — always writes when called
+// (throttle is handled per-request inside TransformStream)
 // ─────────────────────────────────────────────────────
-let lastProgressWrite = 0;
-
 async function writeGenerationProgress(
   reportId: string,
   userId: string,
   progress: number,
   statusText: string
 ): Promise<void> {
-  const now = Date.now();
-  if (now - lastProgressWrite < 3000) return;
-  lastProgressWrite = now;
-
   try {
     const { error } = await supabase
       .from('reports')
@@ -41,11 +36,7 @@ async function writeGenerationProgress(
       .eq('id', reportId)
       .eq('user_id', userId);
 
-    if (error) {
-      devWarn('Progress write DB error:', error.message);
-    } else {
-      devLog(`Progress: ${Math.round(progress)}% — ${statusText}`);
-    }
+    if (error) devWarn('Progress write DB error:', error.message);
   } catch (err) {
     devWarn('Progress write failed:', err);
   }
@@ -79,9 +70,15 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
     const {
-      reportId, propertyId, selectedMonth, selectedYear,
-      tier, distributionStatus, distributionNote,
-      questionnaireAnswers, streaming = false,
+      reportId,
+      propertyId,
+      selectedMonth,
+      selectedYear,
+      tier,
+      distributionStatus,
+      distributionNote,
+      questionnaireAnswers,
+      streaming = false,
     } = body;
 
     devLog('═══════════════════════════════════════');
@@ -92,7 +89,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
     const input = {
-      reportId, propertyId, userId,
+      reportId,
+      propertyId,
+      userId,
       selectedMonth: parseInt(selectedMonth),
       selectedYear: parseInt(selectedYear),
       tier: tier || 'foundational',
@@ -119,8 +118,8 @@ export async function POST(request: NextRequest) {
 
       if (initError) devWarn('Initial write error:', initError.message);
 
-      // Reset throttle for this generation
-      lastProgressWrite = 0;
+      // Per-request throttle (not module-level)
+      let lastWrite = 0;
 
       // Track accumulated text for progress estimation
       let fullText = '';
@@ -139,18 +138,24 @@ export async function POST(request: NextRequest) {
           const estimatedProgress = 5 + (fullText.length / (maxTokens * 4)) * 85;
 
           const sectionMatches = fullText.match(/"id"\s*:\s*"([a-z_]+)"/g);
-          const lastMatch = sectionMatches?.[sectionMatches.length - 1]?.match(/"id"\s*:\s*"([a-z_]+)"/);
+          const lastMatch = sectionMatches?.[sectionMatches.length - 1]?.match(
+            /"id"\s*:\s*"([a-z_]+)"/
+          );
           const lastSection = lastMatch?.[1];
           const statusText = lastSection
             ? SECTION_STATUS_MAP[lastSection] || `Generating: ${lastSection.replace(/_/g, ' ')}...`
             : 'Generating report sections...';
 
-          await writeGenerationProgress(
-            reportId,
-            userId,
-            Math.min(estimatedProgress, 90),
-            statusText
-          );
+          const now = Date.now();
+          if (now - lastWrite >= 3000) {
+            lastWrite = now;
+            await writeGenerationProgress(
+              reportId,
+              userId,
+              Math.min(estimatedProgress, 90),
+              statusText
+            );
+          }
         },
         async flush() {
           devLog('Stream flush — writing in_review');
@@ -176,7 +181,7 @@ export async function POST(request: NextRequest) {
         headers: {
           'Content-Type': 'text/event-stream',
           'Cache-Control': 'no-cache',
-          'Connection': 'keep-alive',
+          Connection: 'keep-alive',
         },
       });
     }
