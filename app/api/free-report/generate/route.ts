@@ -1,6 +1,7 @@
 // app/api/free-report/generate/route.ts
 // WriteUp AI — Free Report Generation Endpoint
 // Creates property, uploads T-12, returns reportId for client-side generation trigger
+// NOTE: tier is "professional" — the funnel promises Professional-level sections
 
 import { auth } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -96,7 +97,7 @@ export async function POST(req: Request) {
         questionnaire: questionnaire,
         distribution_status: questionnaire.distribution_status || null,
         generation_config: {
-          tier: "foundational",
+          tier: "professional",
           sections: FREE_SECTIONS,
           isFreeReport: true,
           presetIndex: parseInt(preset, 10),
@@ -173,12 +174,14 @@ export async function POST(req: Request) {
 
     // Return the IDs — client will trigger generation via /api/reports/generate
     // using the same flow as the normal generate page
+    // tier: "professional" ensures the prompt uses full analysis depth,
+    // charts, and institutional-grade narrative for the 5 free sections
     return NextResponse.json({
       reportId: report.id,
       propertyId: property.id,
       selectedMonth: now.getMonth() + 1,
       selectedYear: now.getFullYear(),
-      tier: "foundational",
+      tier: "professional",
       questionnaire,
       status: "ready",
     });

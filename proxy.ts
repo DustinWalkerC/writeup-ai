@@ -1,6 +1,6 @@
 // proxy.ts — Root of project
 // WriteUp AI — Clerk Auth + Subscription Gate
-// Updated: March 6, 2026
+// Updated: March 8, 2026
 
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
@@ -10,7 +10,6 @@ const isProtectedRoute = createRouteMatcher(["/dashboard(.*)"]);
 
 // Routes that don't require an active subscription
 const isExemptFromSubscription = createRouteMatcher([
-  "/dashboard/welcome",
   "/dashboard/pricing",
   "/dashboard/checkout",
   "/dashboard/checkout/success",
@@ -75,6 +74,12 @@ async function getSubscriptionStatus(userId: string) {
 export default clerkMiddleware(async (auth, req) => {
   const { pathname } = req.nextUrl;
 
+  // /welcome is a public-ish route — requires auth but not subscription
+  // Don't run subscription logic on it
+  if (pathname.startsWith("/welcome")) {
+    return NextResponse.next();
+  }
+
   // Protect all dashboard routes with Clerk auth
   if (isProtectedRoute(req)) {
     await auth.protect();
@@ -111,7 +116,7 @@ export default clerkMiddleware(async (auth, req) => {
 
     // No subscription, free report not used — send to onboarding funnel
     if (!freeReportUsed) {
-      const welcomeUrl = new URL("/dashboard/welcome", req.url);
+      const welcomeUrl = new URL("/welcome", req.url);
       return NextResponse.redirect(welcomeUrl);
     }
 
