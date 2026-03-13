@@ -9,6 +9,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import GuidedQuestions from "./guided-questions";
 import GeneratingPage from "./generating-page";
+import TransitionSplash, { SPLASH_CONFIG } from "./transition-splash";
 import { useRouter } from "next/navigation";
 
 // ═══════════════════════════════════════════════════════════
@@ -1078,9 +1079,39 @@ export default function WelcomeClient({ userId, userEmail, userName }: WelcomeCl
 
   const [questionAnswers, setQuestionAnswers] = useState<Record<string, string | number>>({});
 
-  const goTo = (n: number) => { setStep(Math.max(0, Math.min(4, n))); window.scrollTo(0, 0); };
+  // ─── Splash State ───
+  const [showSplash, setShowSplash] = useState(true);
+  const [splashId, setSplashId] = useState<string>("opening");
+  const pendingStepRef = useRef<number | null>(null);
 
-  const handleGenerate = useCallback(async () => {
+  const STEP_SPLASH: Record<number, string> = {
+    1: "sections",
+    2: "upload",
+  };
+
+  const handleSplashComplete = useCallback(() => {
+    setShowSplash(false);
+    if (pendingStepRef.current !== null) {
+      const next = pendingStepRef.current;
+      pendingStepRef.current = null;
+      setStep(next);
+      window.scrollTo(0, 0);
+    }
+  }, []);
+
+  const goTo = useCallback((n: number) => {
+    const splashForStep = STEP_SPLASH[n];
+    if (splashForStep) {
+      setSplashId(splashForStep);
+      pendingStepRef.current = n;
+      setShowSplash(true);
+    } else {
+      setStep(Math.max(0, Math.min(4, n)));
+      window.scrollTo(0, 0);
+    }
+  }, []);
+
+  const doGenerate = useCallback(async () => {
     setGenerating(true);
     setError(null);
     try {
@@ -1096,10 +1127,8 @@ export default function WelcomeClient({ userId, userEmail, userName }: WelcomeCl
         : PRESETS[formData.preset];
       fd.append("presetColors", JSON.stringify(presetColors));
 
-      // Extract report period and distribution from answers
       const { distribution, reportMonth, reportYear, ...questionnaireFields } = questionAnswers;
 
-      // Pass report period — defaults to previous month if not set
       const now = new Date();
       const defMonth = now.getMonth() === 0 ? 12 : now.getMonth();
       const defYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
@@ -1169,12 +1198,24 @@ export default function WelcomeClient({ userId, userEmail, userName }: WelcomeCl
     }
   }, [formData, questionAnswers]);
 
+  const handleQuestionsComplete = useCallback(() => {
+    setSplashId("generating");
+    setShowSplash(true);
+    doGenerate();
+  }, [doGenerate]);
+
+  const currentSplash = SPLASH_CONFIG[splashId] || null;
+  const splashOverlay = showSplash && currentSplash ? (
+    <TransitionSplash splash={currentSplash} onComplete={handleSplashComplete} m={m} />
+  ) : null;
+
   if (generating) {
     return (
       <div style={{ minHeight: "100vh", background: W.bg, fontFamily: F.body, overflowX: "hidden" }}>
         <GlobalCSS />
         <TopBar m={m} />
-        <GeneratingPage reportReady={reportReady} onContinue={() => { setGenerating(false); setReportReady(false); goTo(4); }} m={m} />
+        <GeneratingPage reportReady={reportReady} onContinue={() => { setGenerating(false); setReportReady(false); goTo(4); }} m={m} skipIntro={true} />
+        {splashOverlay}
       </div>
     );
   }
@@ -1207,7 +1248,7 @@ export default function WelcomeClient({ userId, userEmail, userName }: WelcomeCl
         <GuidedQuestions
           m={m}
           t={false}
-          onNext={handleGenerate}
+          onNext={handleQuestionsComplete}
           onBack={() => goTo(2)}
           answers={questionAnswers}
           onAnswersChange={setQuestionAnswers}
@@ -1215,6 +1256,7 @@ export default function WelcomeClient({ userId, userEmail, userName }: WelcomeCl
       )}
       {step === 4 && <Screen5 userEmail={userEmail} reportId={reportId} onBookDemo={() => setShowDemoModal(true)} m={m} formData={formData} />}
       {showDemoModal && <DemoBookingModal onClose={() => setShowDemoModal(false)} userEmail={userEmail} userName={userName} m={m} />}
+      {splashOverlay}
     </div>
   );
 }

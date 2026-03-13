@@ -118,7 +118,7 @@ function IntroSplash({ onComplete }: { onComplete: () => void }) {
         transform: step >= 1 ? "translateY(0)" : "translateY(8px)",
         transition: "all 0.6s cubic-bezier(0.32, 0.72, 0, 1)",
       }}>
-        Generating your report
+        {morphing ? "Generating your report" : "Your report is generating now"}
       </div>
       <div style={{
         fontFamily: F.body, fontSize: 14, color: W.textSoft,
@@ -126,7 +126,7 @@ function IntroSplash({ onComplete }: { onComplete: () => void }) {
         transition: "all 0.4s", textAlign: "center", maxWidth: 320,
         height: morphing ? 0 : "auto", overflow: "hidden",
       }}>
-        While you wait, explore what WriteUp AI can do for your firm
+        While our engine works, explore everything WriteUp AI does for firms like yours. We&apos;ll let you know when your report is ready.
       </div>
       {morphing && (
         <div style={{ width: "min(100% - 48px, 600px)", height: 4, borderRadius: 100, background: W.borderL, overflow: "hidden", marginTop: 2 }}>
@@ -235,14 +235,14 @@ function ReviewMarquee({ m }: { m: boolean }) {
     <LiRec key="r4" initials="DO" color="#E65100" role="Director of Operations" org="Third-party property management · 8 ownership groups" timeAgo="Reviewed 1 week ago" text={"We manage for 8 different ownership groups. Each wanted reports 'their way.' One analyst trying to maintain 8 templates for 23 properties. She almost quit.\n\nNow every owner gets a branded report with their firm's logo and colors. The email delivery system sends reports directly to LPs — no more manual email formatting. Analyst spends time analyzing, not formatting."} m={m} />,
     <LiPost key="p5" initials="AM" color="#C2185B" role="Asset Manager" org="Value-add multifamily operator" detail="Southeast portfolio" timeAgo="5d" text={"The hardest part of investor reporting isn't the numbers. It's writing narrative that makes numbers mean something.\n\nWriteUp AI reads the T-12, cross-references prior month and budget, then writes analysis that puts performance in context. Our LPs get a report that's equal parts boardroom presentation and financial audit."} likes={54} comments={8} m={m} />,
   ];
-  const doubled = [...items, ...items];
   const [paused, setPaused] = useState(false);
   return (
     <div style={{ overflow: "hidden", width: "100%", position: "relative", padding: "8px 0" }}>
       <div style={{ position: "absolute", left: 0, top: 0, bottom: 0, width: 80, background: `linear-gradient(to right, ${W.bg}, transparent)`, zIndex: 2, pointerEvents: "none" }} />
       <div style={{ position: "absolute", right: 0, top: 0, bottom: 0, width: 80, background: `linear-gradient(to left, ${W.bg}, transparent)`, zIndex: 2, pointerEvents: "none" }} />
       <div onMouseDown={() => setPaused(true)} onMouseUp={() => setPaused(false)} onMouseLeave={() => setPaused(false)} onTouchStart={() => setPaused(true)} onTouchEnd={() => setPaused(false)} style={{ display: "flex", gap: 20, width: "max-content", alignItems: "flex-start", animation: "marqueeScroll 90s linear infinite", animationPlayState: paused ? "paused" : "running", cursor: "grab" }}>
-        {doubled}
+        {items.map((item, i) => <div key={`a-${i}`} style={{ display: "contents" }}>{item}</div>)}
+        {items.map((item, i) => <div key={`b-${i}`} style={{ display: "contents" }}>{item}</div>)}
       </div>
     </div>
   );
@@ -444,11 +444,12 @@ interface GeneratingPageProps {
   reportReady: boolean;
   onContinue: () => void;
   m: boolean;
+  skipIntro?: boolean;
 }
 
-export default function GeneratingPage({ reportReady, onContinue, m }: GeneratingPageProps) {
+export default function GeneratingPage({ reportReady, onContinue, m, skipIntro = false }: GeneratingPageProps) {
   const t = typeof window !== "undefined" && window.innerWidth >= 640 && window.innerWidth < 1024;
-  const [showSplash, setShowSplash] = useState(true);
+  const [showSplash, setShowSplash] = useState(!skipIntro);
   const [progress, setProgress] = useState(0);
   const [phase, setPhase] = useState("Extracting financial data...");
   const [sectionsRevealed, setSectionsRevealed] = useState(0);

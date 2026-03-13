@@ -80,7 +80,7 @@ const F = {
 // ═══════════════════════════════════════════════════════════
 // SPLASH DURATION — change this one number to adjust timing
 // ═══════════════════════════════════════════════════════════
-const SPLASH_DURATION_MS = 5000; // ← 4.5 seconds. Change to 5000 for 5s, 3000 for 3s, etc.
+const SPLASH_DURATION_MS = 13800; // ← 4.5 seconds. Change to 5000 for 5s, 3000 for 3s, etc.
 
 // ═══════════════════════════════════════════════════════════
 // CSS (inject once at component mount)
@@ -375,14 +375,14 @@ export default function GuidedQuestions({
           fontFamily: F.display, fontSize: m ? 28 : 36, fontWeight: 500,
           margin: "0 0 14px", letterSpacing: "-0.02em", lineHeight: 1.15,
         }}>
-          Now, tell us about your property
+          Last step before we build
         </h2>
         <p style={{
           ...revealStyle(splashSwept, W.textSoft, 2.4, 0.5, 0.25),
           fontFamily: F.body, fontSize: m ? 15 : 17, lineHeight: 1.6,
           margin: "0 auto", maxWidth: 420,
         }}>
-          The more context you share, the more institutional your report reads. Every question is optional.
+          A few quick questions so your report reads like your team wrote it — occupancy updates, move-ins, financial changes, asset manager notes. The context that turns data into exceptional narrative.
         </p>
       </div>
     );
