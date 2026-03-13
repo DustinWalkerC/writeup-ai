@@ -1,7 +1,12 @@
 // app/welcome/transition-splash.tsx
-// WriteUp AI — Funnel Transition Splashes
+// WriteUp AI — Funnel Transition Splashes (v3)
 // RGB text reveal splashes between funnel screens. Auto-advance.
-// Used by welcome-client.tsx and guided-questions.tsx
+//
+// v3 fix: Smooth transition timing
+// - Splash fade now completes fully BEFORE onComplete fires
+// - 150ms buffer after fade ensures splash is invisible before DOM removal
+// - Fade duration increased to 800ms for smoother feel
+// - pointerEvents: "none" set when fading so users can't interact
 
 "use client";
 
@@ -24,14 +29,14 @@ const F = {
 };
 
 // ═══════════════════════════════════════════════════════════
-// RGB Gradient (same as guided-questions.tsx / generating-page.tsx)
+// RGB Gradient
 // ═══════════════════════════════════════════════════════════
 function makeRevealGradient(c: string): string {
   return `linear-gradient(135deg, ${c} 0%, ${c} 30%, #C97B84 36%, #D4A84C 42%, #7ABFBF 48%, #B09ED8 54%, #8DB98D 60%, transparent 66%, transparent 100%)`;
 }
 
 // ═══════════════════════════════════════════════════════════
-// Splash Configuration — Final Copy & Timing
+// Splash Configuration
 // ═══════════════════════════════════════════════════════════
 export interface SplashConfig {
   id: string;
@@ -55,7 +60,7 @@ export const SPLASH_CONFIG: Record<string, SplashConfig> = {
     id: "sections",
     headline: "Your investors are about to see a different kind of report",
     subtitle:
-      "We\u2019re giving you five institutional-quality sections \u2014 every number verified before it reaches your LPs. For free. Click any section to see exactly what it analyzes for you.",
+      "Five institutional-quality sections, each with its own data visualization \u2014 every number verified before it reaches your LPs. Explore what each section analyzes, and reorder them to match how your firm reports.",
     durationMs: 15800,
   },
   upload: {
@@ -83,11 +88,26 @@ export const SPLASH_CONFIG: Record<string, SplashConfig> = {
 };
 
 // ═══════════════════════════════════════════════════════════
+// CSS (injected once)
+// ═══════════════════════════════════════════════════════════
+const splashCSS = `
+@keyframes splashSweep{0%{background-position:250% 0}100%{background-position:-250% 0}}
+`;
+
+// ═══════════════════════════════════════════════════════════
 // TransitionSplash Component
 // ═══════════════════════════════════════════════════════════
-// Renders a full-screen overlay with RGB text reveal.
-// Auto-dismisses after durationMs and calls onComplete.
-// position: fixed — renders on top of everything.
+//
+// TIMING (v3 — smooth handoff):
+//
+//   t1: RGB text reveal starts      @ revealMs (250-400ms)
+//   t2: light sweep fades in        @ revealMs + 400ms
+//   t3: fade-out begins (opacity 0) @ durationMs - 800ms
+//        CSS transition runs 800ms, so fade completes @ durationMs
+//   t4: onComplete fires            @ durationMs + 150ms
+//        150ms after fade is done → splash is fully invisible
+//        → DOM removal + funnel screen mount is seamless
+//
 
 interface TransitionSplashProps {
   splash: SplashConfig;
@@ -99,20 +119,22 @@ export default function TransitionSplash({ splash, onComplete, m }: TransitionSp
   const { headline, subtitle, durationMs, hasIcon, isConfirmation } = splash;
   const [swept, setSwept] = useState(false);
   const [fading, setFading] = useState(false);
+  const [sweepVisible, setSweepVisible] = useState(false);
 
   const revealMs = hasIcon ? 400 : 250;
-  const fadeMs = durationMs - 700;
 
   useEffect(() => {
     const t1 = setTimeout(() => setSwept(true), revealMs);
-    const t2 = setTimeout(() => setFading(true), fadeMs);
-    const t3 = setTimeout(() => onComplete(), durationMs);
+    const t2 = setTimeout(() => setSweepVisible(true), revealMs + 400);
+    const t3 = setTimeout(() => setFading(true), durationMs - 800);
+    const t4 = setTimeout(() => onComplete(), durationMs + 150);
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
       clearTimeout(t3);
+      clearTimeout(t4);
     };
-  }, [onComplete, durationMs, revealMs, fadeMs]);
+  }, [onComplete, durationMs, revealMs]);
 
   const headlineColor = isConfirmation ? W.green : W.text;
 
@@ -129,10 +151,12 @@ export default function TransitionSplash({ splash, onComplete, m }: TransitionSp
         justifyContent: "center",
         padding: m ? "0 28px" : "0 48px",
         opacity: fading ? 0 : 1,
-        transition: "opacity 0.7s cubic-bezier(0.4, 0, 0.2, 1)",
+        transition: "opacity 0.8s cubic-bezier(0.4, 0, 0.2, 1)",
         pointerEvents: fading ? "none" : "auto",
       }}
     >
+      <style>{splashCSS}</style>
+
       {/* Confirmation checkmark */}
       {isConfirmation && (
         <div
@@ -278,6 +302,57 @@ export default function TransitionSplash({ splash, onComplete, m }: TransitionSp
           </span>
         </div>
       )}
+
+      {/* Light sweep presence indicator */}
+      <div
+        style={{
+          width: 140,
+          height: 2,
+          borderRadius: 100,
+          background: "rgba(232,229,224,0.6)",
+          marginTop: isConfirmation ? 16 : 28,
+          position: "relative",
+          overflow: "hidden",
+          opacity: sweepVisible ? 1 : 0,
+          transition: "opacity 0.4s ease",
+        }}
+      >
+        {/* Outer glow layer */}
+        <div
+          style={{
+            position: "absolute",
+            top: -2,
+            left: 0,
+            width: "100%",
+            height: 6,
+            borderRadius: 100,
+            background:
+              "linear-gradient(90deg, transparent 0%, transparent 25%, rgba(0,136,163,0.45) 42%, rgba(0,153,184,0.65) 50%, rgba(0,136,163,0.45) 58%, transparent 75%, transparent 100%)",
+            backgroundSize: "280% 100%",
+            filter: "blur(1.5px)",
+            animation: sweepVisible
+              ? "splashSweep 3s ease-in-out infinite"
+              : "none",
+          }}
+        />
+        {/* Core line */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: "100%",
+            height: 2,
+            borderRadius: 100,
+            background:
+              "linear-gradient(90deg, transparent 0%, transparent 30%, rgba(0,136,163,0.55) 45%, rgba(0,153,184,0.8) 50%, rgba(0,136,163,0.55) 55%, transparent 70%, transparent 100%)",
+            backgroundSize: "280% 100%",
+            animation: sweepVisible
+              ? "splashSweep 3s ease-in-out infinite"
+              : "none",
+          }}
+        />
+      </div>
     </div>
   );
 }

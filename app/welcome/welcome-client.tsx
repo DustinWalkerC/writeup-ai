@@ -394,7 +394,7 @@ function Screen1({ onNext, m }: { onNext: () => void; m: boolean }) {
           </h1>
 
           <p style={{ fontFamily: F.body, fontSize: m ? 14 : 15, color: W.textSoft, lineHeight: 1.65, maxWidth: 520, margin: "0 auto", ...ani(0.15) }}>
-            74% of institutional LPs rank it above past performance.{" "}
+            74% of institutional LPs say reporting quality is how they judge whether a manager is institutional-grade — before they even look at returns.{" "}
             <button onClick={() => setModal("research")} className="info-link" style={{ background: "none", border: "none", cursor: "pointer", color: W.accent, fontWeight: 600, fontFamily: F.body, fontSize: "inherit", textDecoration: "underline", padding: 0 }}>See the research</button>.
             {" "}We built WriteUp AI to give your firm the same reporting standard as the top institutional shops.
           </p>
@@ -530,8 +530,8 @@ function Screen2({ onNext, onBack, m }: { onNext: () => void; onBack: () => void
         <div style={{ maxWidth: 640, margin: "0 auto" }}>
           <Dots current={1} total={5} m={m} />
           <div style={{ textAlign: "center", marginBottom: m ? 20 : 32 }}>
-            <h2 style={{ fontFamily: F.display, fontSize: m ? 26 : 34, fontWeight: 500, color: W.text, margin: "0 0 10px" }}>Choose your report sections</h2>
-            <p style={{ fontFamily: F.body, fontSize: m ? 13 : 15, color: W.textSoft, lineHeight: 1.6, maxWidth: 480, margin: "0 auto" }}>Your complimentary report includes 5 professional sections. Tap any section to see what your investors receive. Drag to reorder.</p>
+            <h2 style={{ fontFamily: F.display, fontSize: m ? 26 : 34, fontWeight: 500, color: W.text, margin: "0 0 10px" }}>Your report sections</h2>
+            <p style={{ fontFamily: F.body, fontSize: m ? 13 : 15, color: W.textSoft, lineHeight: 1.6, maxWidth: 500, margin: "0 auto" }}>Our reporting intelligence generates institutional-quality analysis and narrative across every section below. Each includes its own data visualization. Tap to explore, drag to reorder. With a plan, you also control section length.</p>
           </div>
 
           {/* Drag hint */}
@@ -638,20 +638,29 @@ function Screen3({ onNext, onBack, m, formData, setFormData }: {
 
             {/* T-12 upload */}
             <input ref={t12Ref} type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={handleT12} style={{ display: "none" }} />
-            <div onClick={() => t12Ref.current?.click()} style={{ border: `2px dashed ${formData.t12File ? W.green : W.accent}40`, borderRadius: 12, padding: m ? 20 : 28, textAlign: "center", background: formData.t12File ? W.greenBg : `${W.accent}03`, cursor: "pointer", marginBottom: 8 }}>
-              {formData.t12File ? <><Chk c={W.green} s={24} /><div style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: W.green, marginTop: 6 }}>{formData.t12File.name}</div><div style={{ fontFamily: F.body, fontSize: 11, color: W.textMuted, marginTop: 2 }}>Click to replace</div></> : <><div style={{ fontFamily: F.body, fontSize: 14, fontWeight: 600, color: W.text }}>Upload T-12 <span style={{ color: W.red }}>*</span></div><div style={{ fontFamily: F.body, fontSize: 12, color: W.textMuted, marginTop: 4 }}>PDF, Excel, or CSV</div></>}
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <div onClick={() => t12Ref.current?.click()} style={{ border: `2px dashed ${formData.t12File ? W.green : W.accent}40`, borderRadius: 12, padding: m ? 20 : 28, textAlign: "center", background: formData.t12File ? W.greenBg : `${W.accent}03`, cursor: "pointer" }}>
+                {formData.t12File ? <><Chk c={W.green} s={24} /><div style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: W.green, marginTop: 6 }}>{formData.t12File.name}</div><div style={{ fontFamily: F.body, fontSize: 11, color: W.textMuted, marginTop: 2 }}>Click to replace</div></> : <><div style={{ fontFamily: F.body, fontSize: 14, fontWeight: 600, color: W.text }}>Upload T-12 <span style={{ color: W.red }}>*</span></div><div style={{ fontFamily: F.body, fontSize: 12, color: W.textMuted, marginTop: 4 }}>PDF, Excel, or CSV</div></>}
+              </div>
+              {formData.t12File && <button onClick={(e) => { e.stopPropagation(); setFormData(p => ({ ...p, t12File: null })); if (t12Ref.current) t12Ref.current.value = ""; }} style={{ position: "absolute", top: 8, right: 8, width: 28, height: 28, borderRadius: 8, border: "none", background: `${W.red}10`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Remove T-12"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={W.red} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>}
             </div>
 
             {/* Rent roll upload */}
             <input ref={rrRef} type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={handleRR} style={{ display: "none" }} />
-            <div onClick={() => rrRef.current?.click()} style={{ border: `1px dashed ${formData.rentRollFile ? W.green : W.border}`, borderRadius: 10, padding: 14, textAlign: "center", background: formData.rentRollFile ? W.greenBg : W.bgWarm, marginBottom: 8, cursor: "pointer", minHeight: 44 }}>
-              {formData.rentRollFile ? <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: W.green }}>{formData.rentRollFile.name}</span> : <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: W.textMid }}>Rent Roll <span style={{ fontWeight: 400, color: W.textMuted }}>(optional)</span></span>}
+            <div style={{ position: "relative", marginBottom: 8 }}>
+              <div onClick={() => rrRef.current?.click()} style={{ border: `1px dashed ${formData.rentRollFile ? W.green : W.border}`, borderRadius: 10, padding: 14, textAlign: "center", background: formData.rentRollFile ? W.greenBg : W.bgWarm, cursor: "pointer", minHeight: 44 }}>
+                {formData.rentRollFile ? <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: W.green }}>{formData.rentRollFile.name}</span> : <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: W.textMid }}>Rent Roll <span style={{ fontWeight: 400, color: W.textMuted }}>(optional)</span></span>}
+              </div>
+              {formData.rentRollFile && <button onClick={(e) => { e.stopPropagation(); setFormData(p => ({ ...p, rentRollFile: null })); if (rrRef.current) rrRef.current.value = ""; }} style={{ position: "absolute", top: 6, right: 6, width: 24, height: 24, borderRadius: 6, border: "none", background: `${W.red}10`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Remove Rent Roll"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={W.red} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>}
             </div>
 
             {/* Budget upload */}
             <input ref={budgetRef} type="file" accept=".pdf,.xlsx,.xls,.csv" onChange={handleBudget} style={{ display: "none" }} />
-            <div onClick={() => budgetRef.current?.click()} style={{ border: `1px dashed ${formData.budgetFile ? W.green : W.border}`, borderRadius: 10, padding: 14, textAlign: "center", background: formData.budgetFile ? W.greenBg : W.bgWarm, marginBottom: 12, cursor: "pointer", minHeight: 44 }}>
-              {formData.budgetFile ? <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: W.green }}>{formData.budgetFile.name}</span> : <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: W.textMid }}>Annual Budget <span style={{ fontWeight: 400, color: W.textMuted }}>(optional — enables variance analysis)</span></span>}
+            <div style={{ position: "relative", marginBottom: 12 }}>
+              <div onClick={() => budgetRef.current?.click()} style={{ border: `1px dashed ${formData.budgetFile ? W.green : W.border}`, borderRadius: 10, padding: 14, textAlign: "center", background: formData.budgetFile ? W.greenBg : W.bgWarm, cursor: "pointer", minHeight: 44 }}>
+                {formData.budgetFile ? <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: W.green }}>{formData.budgetFile.name}</span> : <span style={{ fontFamily: F.body, fontSize: 13, fontWeight: 600, color: W.textMid }}>Annual Budget <span style={{ fontWeight: 400, color: W.textMuted }}>(optional — enables variance analysis)</span></span>}
+              </div>
+              {formData.budgetFile && <button onClick={(e) => { e.stopPropagation(); setFormData(p => ({ ...p, budgetFile: null })); if (budgetRef.current) budgetRef.current.value = ""; }} style={{ position: "absolute", top: 6, right: 6, width: 24, height: 24, borderRadius: 6, border: "none", background: `${W.red}10`, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }} aria-label="Remove Budget"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={W.red} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg></button>}
             </div>
           </div>
 
@@ -1087,6 +1096,7 @@ export default function WelcomeClient({ userId, userEmail, userName }: WelcomeCl
   const STEP_SPLASH: Record<number, string> = {
     1: "sections",
     2: "upload",
+    3: "questions",
   };
 
   const handleSplashComplete = useCallback(() => {
@@ -1214,7 +1224,7 @@ export default function WelcomeClient({ userId, userEmail, userName }: WelcomeCl
       <div style={{ minHeight: "100vh", background: W.bg, fontFamily: F.body, overflowX: "hidden" }}>
         <GlobalCSS />
         <TopBar m={m} />
-        <GeneratingPage reportReady={reportReady} onContinue={() => { setGenerating(false); setReportReady(false); goTo(4); }} m={m} skipIntro={true} />
+        <GeneratingPage reportReady={reportReady} onContinue={() => { setGenerating(false); setReportReady(false); goTo(4); }} m={m} skipIntro={false} />
         {splashOverlay}
       </div>
     );
