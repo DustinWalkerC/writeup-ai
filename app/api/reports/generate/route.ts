@@ -95,6 +95,7 @@ export async function POST(request: NextRequest) {
       selectedMonth: parseInt(selectedMonth),
       selectedYear: parseInt(selectedYear),
       tier: tier || 'foundational',
+      sectionIds: Array.isArray(body.sectionIds) ? body.sectionIds : undefined,
       distributionStatus: distributionStatus || 'none',
       distributionNote: distributionNote || '',
       questionnaireAnswers: questionnaireAnswers || {},

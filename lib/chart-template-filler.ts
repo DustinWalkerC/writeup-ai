@@ -289,6 +289,7 @@ function fmtPct(n: number | null | undefined, showSign = false): string {
 }
 
 function fmtVarianceDollar(actual: number, budget: number, isExpense: boolean): { text: string; favorable: boolean } {
+  if (budget == null || isNaN(budget) || actual == null || isNaN(actual)) return { text: '—', favorable: true };
   const diff = isExpense ? budget - actual : actual - budget;
   const favorable = diff >= 0;
   const text = favorable ? fmtDollar(Math.abs(diff)) : `(${fmtDollar(Math.abs(diff)).replace(/[()]/g, '')})`;
@@ -296,9 +297,10 @@ function fmtVarianceDollar(actual: number, budget: number, isExpense: boolean): 
 }
 
 function fmtVariancePct(actual: number, budget: number, isExpense: boolean): { text: string; favorable: boolean } {
-  if (budget === 0) return { text: 'N/A', favorable: true };
+  if (budget == null || isNaN(budget) || budget === 0 || actual == null || isNaN(actual)) return { text: 'N/A', favorable: true };
   const diff = isExpense ? budget - actual : actual - budget;
   const pct = (diff / budget) * 100;
+  if (!isFinite(pct)) return { text: 'N/A', favorable: true };
   const favorable = pct >= 0;
   return { text: `${favorable ? '+' : ''}${pct.toFixed(1)}%`, favorable };
 }

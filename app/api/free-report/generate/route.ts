@@ -44,6 +44,7 @@ export async function POST(req: Request) {
     const questionnaire = JSON.parse(formData.get("questionnaire") as string || "{}");
     const t12File = formData.get("t12") as File | null;
     const rentRollFile = formData.get("rentRoll") as File | null;
+    const budgetFile = formData.get("budget") as File | null;
 
     // ── Report period from guided questions (defaults to previous month) ──
     const reportMonthStr = formData.get("reportMonth") as string;
@@ -166,6 +167,31 @@ export async function POST(req: Request) {
           file_type: "rent_roll",
           file_size: rentRollFile.size,
           storage_path: rrPath,
+          processing_status: "pending",
+        });
+      }
+    }
+
+    // 5b. Upload budget if provided
+    if (budgetFile) {
+      const budgetBuffer = await budgetFile.arrayBuffer();
+      const budgetPath = `${userId}/${report.id}/${budgetFile.name}`;
+
+      const { error: budgetUploadError } = await supabaseAdmin.storage
+        .from("report-files")
+        .upload(budgetPath, budgetBuffer, {
+          contentType: budgetFile.type,
+          upsert: true,
+        });
+
+      if (!budgetUploadError) {
+        await supabaseAdmin.from("report_files").insert({
+          report_id: report.id,
+          user_id: userId,
+          file_name: budgetFile.name,
+          file_type: "budget",
+          file_size: budgetFile.size,
+          storage_path: budgetPath,
           processing_status: "pending",
         });
       }
