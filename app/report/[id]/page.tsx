@@ -13,7 +13,7 @@ interface Section {
   title: string;
   content: string;
   chart_html?: string;
-  metrics?: Array<{ label: string; value: string; change?: string; changeDirection?: string }>;
+  metrics?: Array<{ label: string; value: string; change?: string; changeDirection?: string; vsbudget?: string }>;
   included: boolean;
 }
 
@@ -55,6 +55,8 @@ export default async function PublicReportPage({ params }: { params: Promise<{ i
     .maybeSingle();
 
   const propertyName = property?.name || "Property Report";
+  const propertyAddress = property?.address || "";
+  const unitCount = property?.units || null;
   const companyName = settings?.company_name || "";
   const primaryColor = settings?.color_scheme || "#7b2d3b";
   const accentColor = settings?.accent_color || "#d4a04a";
@@ -63,6 +65,15 @@ export default async function PublicReportPage({ params }: { params: Promise<{ i
   const year = report.selected_year || new Date().getFullYear();
 
   const sections: Section[] = (report.generated_sections || []).filter((s: Section) => s.included !== false);
+
+  // Extract top-level KPIs from executive summary metrics (first section)
+  const headerKPIs = sections[0]?.metrics?.slice(0, 6) || [];
+
+  // Derive location string from address (city, state)
+  const locationParts = propertyAddress.split(",").map((s: string) => s.trim());
+  const locationShort = locationParts.length >= 2
+    ? `${locationParts[locationParts.length - 2]}, ${locationParts[locationParts.length - 1]}`
+    : propertyAddress;
 
   return (
     <div style={{ minHeight: "100vh", background: "#F7F5F1", fontFamily: "'DM Sans','Helvetica Neue',sans-serif" }}>
@@ -82,33 +93,58 @@ export default async function PublicReportPage({ params }: { params: Promise<{ i
       <div style={{ maxWidth: 816, margin: "24px auto", padding: "0 16px" }}>
         <div style={{ background: "#fff", borderRadius: 12, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", border: "1px solid #E8E5E0" }}>
 
-          {/* Report header */}
-          <div style={{ background: primaryColor, padding: "28px 36px", color: "#fff" }}>
+          {/* ═══ INSTITUTIONAL HEADER ═══ */}
+          <div style={{ background: primaryColor, padding: "24px 32px 20px", color: "#fff" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-              <div>
-                <div style={{ fontFamily: "'Newsreader','Georgia',serif", fontSize: 26, fontWeight: 700, marginBottom: 4 }}>{propertyName}</div>
-                <div style={{ fontSize: 13, opacity: 0.85 }}>{monthName} {year} — Monthly Asset Report</div>
-                {property?.address && <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>{property.address}</div>}
+              {/* Left: company + property name + units */}
+              <div style={{ flex: 1 }}>
+                {companyName && (
+                  <div style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" as const, opacity: 0.7, marginBottom: 6 }}>
+                    {companyName}
+                  </div>
+                )}
+                <div style={{ fontFamily: "'Newsreader','Georgia',serif", fontSize: 24, fontWeight: 700, lineHeight: 1.2 }}>
+                  {propertyName}{unitCount ? ` · ${unitCount} Units` : ""}
+                </div>
               </div>
-              {companyName && (
-                <div style={{ fontSize: 12, opacity: 0.7, textAlign: "right" }}>{companyName}</div>
-              )}
+              {/* Right: date + location */}
+              <div style={{ textAlign: "right" as const, flexShrink: 0, marginLeft: 24 }}>
+                <div style={{ fontFamily: "'Newsreader','Georgia',serif", fontSize: 22, fontWeight: 600, lineHeight: 1.2 }}>
+                  {monthName} {year}
+                </div>
+                {locationShort && (
+                  <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>
+                    {locationShort}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
 
           {/* Accent stripe */}
           <div style={{ height: 3, background: accentColor }} />
 
-          {/* KPI bar from executive summary metrics */}
-          {sections[0]?.metrics && sections[0].metrics.length > 0 && (
+          {/* ═══ FULL-WIDTH KPI BAR ═══ */}
+          {headerKPIs.length > 0 && (
             <div style={{ display: "flex", background: secondaryColor, borderBottom: "1px solid #E8E5E0" }}>
-              {sections[0].metrics.slice(0, 5).map((m, i) => (
-                <div key={i} style={{ flex: 1, padding: "14px 12px", textAlign: "center", borderRight: i < Math.min(sections[0].metrics!.length, 5) - 1 ? "1px solid #E8E5E020" : "none" }}>
-                  <div style={{ fontSize: 10, color: "#7A7A7A", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 2 }}>{m.label}</div>
-                  <div style={{ fontFamily: "'Newsreader','Georgia',serif", fontSize: 20, fontWeight: 700, color: primaryColor }}>{m.value}</div>
+              {headerKPIs.map((m, i) => (
+                <div key={i} style={{
+                  flex: 1, padding: "16px 8px", textAlign: "center" as const,
+                  borderRight: i < headerKPIs.length - 1 ? "1px solid rgba(0,0,0,0.06)" : "none",
+                }}>
+                  <div style={{ fontSize: 9, fontWeight: 700, color: "#7A7A7A", textTransform: "uppercase" as const, letterSpacing: "0.06em", marginBottom: 4 }}>
+                    {m.label}
+                  </div>
+                  <div style={{ fontFamily: "'Newsreader','Georgia',serif", fontSize: 20, fontWeight: 700, color: primaryColor, fontVariantNumeric: "tabular-nums" }}>
+                    {m.value}
+                  </div>
                   {m.change && (
-                    <div style={{ fontSize: 10, fontWeight: 600, marginTop: 2, color: m.changeDirection === "up" ? "#29581D" : m.changeDirection === "down" ? "#CC0000" : "#7A7A7A" }}>
-                      {m.changeDirection === "up" ? "\u25B2" : m.changeDirection === "down" ? "\u25BC" : ""} {m.change}
+                    <div style={{
+                      fontSize: 10, fontWeight: 600, marginTop: 3,
+                      color: m.changeDirection === "up" ? "#29581D" : m.changeDirection === "down" ? "#CC0000" : "#7A7A7A",
+                    }}>
+                      {m.changeDirection === "up" ? "\u25B2" : m.changeDirection === "down" ? "\u25BC" : ""}{" "}
+                      {m.change}{!m.change.includes("MoM") && !m.change.includes("bps") ? " MoM" : ""}
                     </div>
                   )}
                 </div>
@@ -116,26 +152,36 @@ export default async function PublicReportPage({ params }: { params: Promise<{ i
             </div>
           )}
 
-          {/* Report sections */}
+          {/* ═══ REPORT SECTIONS ═══ */}
           <div style={{ padding: "28px 36px" }}>
             {sections.map((section, idx) => (
-              <div key={section.id} style={{ marginBottom: idx < sections.length - 1 ? 28 : 0, paddingBottom: idx < sections.length - 1 ? 28 : 0, borderBottom: idx < sections.length - 1 ? "1px solid #F0EDE8" : "none" }}>
+              <div key={section.id} style={{ marginBottom: idx < sections.length - 1 ? 32 : 0, paddingBottom: idx < sections.length - 1 ? 32 : 0, borderBottom: idx < sections.length - 1 ? "1px solid #F0EDE8" : "none" }}>
                 {/* Section title */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-                  <div style={{ width: 3, height: 18, background: accentColor, borderRadius: 2 }} />
-                  <h2 style={{ fontFamily: "'Newsreader','Georgia',serif", fontSize: 18, fontWeight: 600, color: "#1A1A1A", margin: 0 }}>{section.title}</h2>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
+                  <div style={{ width: 3, height: 20, background: accentColor, borderRadius: 2 }} />
+                  <h2 style={{ fontFamily: "'Newsreader','Georgia',serif", fontSize: 19, fontWeight: 600, color: "#1A1A1A", margin: 0 }}>{section.title}</h2>
                 </div>
 
-                {/* Section metrics (skip for first section since KPI bar handles it) */}
+                {/* Section metrics — full width, skip for first section since header KPI bar handles it */}
                 {idx > 0 && section.metrics && section.metrics.length > 0 && (
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+                  <div style={{ display: "flex", gap: 0, marginBottom: 16, border: "1px solid #E8E5E0", borderRadius: 10, overflow: "hidden" }}>
                     {section.metrics.map((m, mi) => (
-                      <div key={mi} style={{ padding: "8px 14px", borderRadius: 8, background: "#F7F5F1", border: "1px solid #E8E5E0", minWidth: 100, textAlign: "center" }}>
-                        <div style={{ fontSize: 10, color: "#7A7A7A", textTransform: "uppercase", letterSpacing: "0.04em" }}>{m.label}</div>
-                        <div style={{ fontFamily: "'Newsreader','Georgia',serif", fontSize: 16, fontWeight: 700, color: primaryColor }}>{m.value}</div>
+                      <div key={mi} style={{
+                        flex: 1, padding: "12px 8px", textAlign: "center" as const, background: "#F7F5F1",
+                        borderRight: mi < section.metrics!.length - 1 ? "1px solid #E8E5E0" : "none",
+                      }}>
+                        <div style={{ fontSize: 9, fontWeight: 700, color: "#7A7A7A", textTransform: "uppercase" as const, letterSpacing: "0.04em", marginBottom: 2 }}>
+                          {m.label}
+                        </div>
+                        <div style={{ fontFamily: "'Newsreader','Georgia',serif", fontSize: 17, fontWeight: 700, color: primaryColor, fontVariantNumeric: "tabular-nums" }}>
+                          {m.value}
+                        </div>
                         {m.change && (
-                          <div style={{ fontSize: 9, fontWeight: 600, color: m.changeDirection === "up" ? "#29581D" : m.changeDirection === "down" ? "#CC0000" : "#7A7A7A" }}>
-                            {m.change}
+                          <div style={{
+                            fontSize: 9, fontWeight: 600, marginTop: 2,
+                            color: m.changeDirection === "up" ? "#29581D" : m.changeDirection === "down" ? "#CC0000" : "#7A7A7A",
+                          }}>
+                            {m.change}{!m.change.includes("MoM") && !m.change.includes("bps") ? " MoM" : ""}
                           </div>
                         )}
                       </div>
@@ -169,16 +215,16 @@ export default async function PublicReportPage({ params }: { params: Promise<{ i
           </div>
 
           {/* Footer */}
-          <div style={{ padding: "16px 36px", background: "#F7F5F1", borderTop: "1px solid #E8E5E0", textAlign: "center" }}>
+          <div style={{ padding: "16px 36px", background: "#F7F5F1", borderTop: "1px solid #E8E5E0", textAlign: "center" as const }}>
             <div style={{ fontSize: 11, color: "#A3A3A3" }}>Generated by WriteUp AI — Institutional-quality investor reports for multifamily PE</div>
           </div>
         </div>
 
         {/* CTA banner below report */}
-        <div style={{ marginTop: 20, padding: "24px 28px", borderRadius: 14, background: "#fff", border: "1px solid #E8E5E0", textAlign: "center", boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
+        <div style={{ marginTop: 20, padding: "24px 28px", borderRadius: 14, background: "#fff", border: "1px solid #E8E5E0", textAlign: "center" as const, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" }}>
           <div style={{ fontFamily: "'Newsreader','Georgia',serif", fontSize: 20, fontWeight: 500, color: "#1A1A1A", marginBottom: 6 }}>Want reports like this for your portfolio?</div>
           <div style={{ fontSize: 13, color: "#7A7A7A", marginBottom: 16, lineHeight: 1.5 }}>Generate institutional-quality investor reports in under 5 minutes. Every plan includes three-layer math verification and a live onboarding session.</div>
-          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+          <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" as const }}>
             <a href="https://app.writeupai.com/dashboard/pricing" style={{
               padding: "12px 28px", borderRadius: 10, background: "#00B7DB", color: "#fff", textDecoration: "none",
               fontFamily: "'DM Sans',sans-serif", fontSize: 14, fontWeight: 600, display: "inline-flex", alignItems: "center", gap: 8,

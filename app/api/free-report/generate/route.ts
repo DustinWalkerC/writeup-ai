@@ -45,6 +45,15 @@ export async function POST(req: Request) {
     const t12File = formData.get("t12") as File | null;
     const rentRollFile = formData.get("rentRoll") as File | null;
 
+    // ── Report period from guided questions (defaults to previous month) ──
+    const reportMonthStr = formData.get("reportMonth") as string;
+    const reportYearStr = formData.get("reportYear") as string;
+    const now = new Date();
+    const defaultMonth = now.getMonth() === 0 ? 12 : now.getMonth(); // previous month
+    const defaultYear = now.getMonth() === 0 ? now.getFullYear() - 1 : now.getFullYear();
+    const selectedMonth = reportMonthStr ? parseInt(reportMonthStr, 10) : defaultMonth;
+    const selectedYear = reportYearStr ? parseInt(reportYearStr, 10) : defaultYear;
+
     if (!propertyName || !unitCount || !t12File) {
       return NextResponse.json({ error: "Missing required fields: propertyName, unitCount, t12" }, { status: 400 });
     }
@@ -81,17 +90,16 @@ export async function POST(req: Request) {
         { onConflict: "user_id" }
       );
 
-    // 3. Create report record
-    const now = new Date();
+    // 3. Create report record — using user-selected month/year
     const { data: report, error: reportError } = await supabaseAdmin
       .from("reports")
       .insert({
         property_id: property.id,
         user_id: userId,
-        month: now.getMonth() + 1,
-        year: now.getFullYear(),
-        selected_month: now.getMonth() + 1,
-        selected_year: now.getFullYear(),
+        month: selectedMonth,
+        year: selectedYear,
+        selected_month: selectedMonth,
+        selected_year: selectedYear,
         status: "draft",
         pipeline_stage: "draft",
         questionnaire: questionnaire,
@@ -179,8 +187,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       reportId: report.id,
       propertyId: property.id,
-      selectedMonth: now.getMonth() + 1,
-      selectedYear: now.getFullYear(),
+      selectedMonth,
+      selectedYear,
       tier: "professional",
       questionnaire,
       status: "ready",

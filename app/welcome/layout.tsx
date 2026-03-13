@@ -17,5 +17,12 @@ export default function WelcomeLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <>{children}</>;
+  return (
+    <>
+      <link rel="preconnect" href="https://calendly.com" />
+      <link rel="dns-prefetch" href="https://calendly.com" />
+      <link rel="preconnect" href="https://assets.calendly.com" />
+      {children}
+    </>
+  );
 }

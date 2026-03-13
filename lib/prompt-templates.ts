@@ -119,36 +119,13 @@ For EVERY section that has a chart assignment below, you MUST:
 
 For sections with NO chart assignment, set both "chart_html" to "" and "chart_data" to null.
 
-EXCEPTION — report_header:
-The executive_summary section's chart_data uses the "report_header" schema.
-This generates the institutional header bar with KPIs.
+NOTE: The report viewer renders the property header, date, and KPI bar
+automatically from report metadata. Do NOT generate a report_header chart.
+For executive_summary, set chart_data to null and use the "metrics" array for KPIs.
 
 ═══════════════════════════════════════════
 CHART DATA SCHEMAS (use EXACTLY as shown):
 ═══════════════════════════════════════════
-
-SCHEMA: report_header (for executive_summary only)
-{
-  "chart_type": "report_header",
-  "data": {
-    "property_name": "string — property name",
-    "units": number|null,
-    "period": "string — e.g. 'November 2025'",
-    "location": "string|null — e.g. 'San Antonio, TX'",
-    "asset_class": "string|null — e.g. 'Class B Multifamily'",
-    "company_name": "string|null — from settings",
-    "logo_url": "string|null — from settings",
-    "kpis": [
-      {
-        "label": "string — e.g. 'NOI'",
-        "value": "string — formatted, e.g. '$113,848'",
-        "change": "string — e.g. '+25.8% MoM' or '–90 bps MoM'",
-        "favorable": true|false
-      }
-    ]
-  }
-}
-The kpis array should have exactly 5 items: NOI, Revenue, Expenses, NOI Margin, Occupancy.
 
 SCHEMA: budget_variance_table
 {
@@ -308,7 +285,7 @@ SCHEMA: comparison_table
 ═══════════════════════════════════════
 SECTION → CHART TYPE ASSIGNMENTS:
 ═══════════════════════════════════════
-executive_summary → report_header
+executive_summary → NO CHART (the viewer renders the header; put KPIs in "metrics" array, set chart_data to null)
 revenue_summary → budget_variance_table
 expense_summary → budget_variance_table
 revenue_analysis → revenue_waterfall
@@ -369,7 +346,12 @@ They do not want filler, marketing language, or vague optimism.
   4.2% was observed in revenue."
 - Paragraphs should flow logically: metric → context → driver →
   implication.
-- Bold the single most important metric in each section using <strong> tags.
+- Bold key takeaway phrases throughout the narrative using <strong> tags so
+  an LP can skim just the bold text and understand the full story.
+  Example: "NOI of <strong>$113,848 (+25.8% MoM)</strong> driven by
+  <strong>$26,671 in operating expense reduction</strong>."
+  Bold 2-4 phrases per paragraph — metrics, drivers, and conclusions.
+  The bold text alone should form a coherent summary.
 - Every sentence in the executive summary must contain a specific number.
 - FORBIDDEN WORDS — never use these:
   "significant/significantly" — use specific quantifiers
@@ -935,17 +917,21 @@ ${s.promptGuidance}
   const chartAccess = buildChartAccessBlock(sectionIds, params.tier);
 
   // ── Report header instruction ──
+  // NOTE: The viewer renders the header automatically from report metadata.
+  // We pass company/logo info for the narrative to reference, NOT for chart generation.
   let reportHeaderBlock = '';
   if (params.companyName || params.logoUrl) {
-    reportHeaderBlock = `<report_header>
-The executive_summary section's chart_data should use the "report_header" schema.
-${params.logoUrl ? `Logo URL: ${params.logoUrl}` : 'No logo provided — set logo_url to null.'}
-Company name: ${params.companyName || 'Set company_name to null'}
-</report_header>`;
+    reportHeaderBlock = `<report_context>
+${params.companyName ? `Company name: ${params.companyName}` : ''}
+${params.logoUrl ? `Logo URL: ${params.logoUrl}` : ''}
+Use the company name in the report_header JSON field (top-level, not in sections).
+Do NOT generate a report_header chart_data for executive_summary — the viewer handles the visual header.
+</report_context>`;
   }
 
   // ── Critical rules (enforcement layer) ──
   const criticalRules = `<critical_rules>
+<rule>Do NOT generate a report_header chart for the executive_summary section. The report viewer renders the property header, date, and top-level KPI bar automatically from report metadata. Setting chart_data to the report_header schema would create a duplicate header. For executive_summary, set chart_data to null and put KPI values in the "metrics" array instead.</rule>
 <rule>Use exact numbers from the <extracted_data> in the user prompt. Never round unless source is rounded.</rule>
 <rule>Format: $1,234,567 (commas) | 94.5% (one decimal) | $850/unit | +3.2% or –1.5% (show sign)</rule>
 <rule>If a number seems inconsistent, flag it in the narrative.</rule>
