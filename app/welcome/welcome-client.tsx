@@ -592,8 +592,8 @@ function Screen3({ onNext, onBack, m, formData, setFormData }: {
   const canProceed = formData.propertyName.trim() && formData.unitCount.trim() && formData.t12File;
 
   return (
-    <div style={{ overflowX: "hidden", minHeight: "calc(100vh - 56px)" }}>
-      <div style={{ background: `linear-gradient(to bottom, ${W.bg} 0%, ${W.bgAlt} 15%, ${W.bgAlt} 60%, ${W.bg} 90%)`, padding: `${m ? "24px 16px" : "32px 40px"}`, maxWidth: 820, margin: "0 auto" }}>
+    <div style={{ overflowX: "hidden", minHeight: "calc(100vh - 56px)", background: `linear-gradient(to bottom, ${W.bg} 0%, ${W.bgAlt} 15%, ${W.bgAlt} 60%, ${W.bg} 90%)` }}>
+      <div style={{ padding: `${m ? "24px 16px" : "32px 40px"}`, maxWidth: 820, margin: "0 auto" }}>
         <Dots current={2} total={5} m={m} />
         <div style={{ textAlign: "center", marginBottom: 18 }}>
           <h2 style={{ fontFamily: F.display, fontSize: m ? 24 : 28, fontWeight: 500, color: W.text, margin: "0 0 6px" }}>Now let&apos;s build your report</h2>
@@ -1092,6 +1092,7 @@ export default function WelcomeClient({ userId, userEmail, userName }: WelcomeCl
   const [showSplash, setShowSplash] = useState(true);
   const [splashId, setSplashId] = useState<string>("opening");
   const pendingStepRef = useRef<number | null>(null);
+  const seenSplashesRef = useRef<Set<string>>(new Set());
 
   const STEP_SPLASH: Record<number, string> = {
     1: "sections",
@@ -1100,6 +1101,7 @@ export default function WelcomeClient({ userId, userEmail, userName }: WelcomeCl
   };
 
   const handleSplashComplete = useCallback(() => {
+    if (splashId) seenSplashesRef.current.add(splashId);
     setShowSplash(false);
     if (pendingStepRef.current !== null) {
       const next = pendingStepRef.current;
@@ -1107,11 +1109,11 @@ export default function WelcomeClient({ userId, userEmail, userName }: WelcomeCl
       setStep(next);
       window.scrollTo(0, 0);
     }
-  }, []);
+  }, [splashId]);
 
   const goTo = useCallback((n: number) => {
     const splashForStep = STEP_SPLASH[n];
-    if (splashForStep) {
+    if (splashForStep && !seenSplashesRef.current.has(splashForStep)) {
       setSplashId(splashForStep);
       pendingStepRef.current = n;
       setShowSplash(true);

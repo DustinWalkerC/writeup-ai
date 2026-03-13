@@ -1,19 +1,18 @@
 // app/welcome/transition-splash.tsx
-// WriteUp AI — Funnel Transition Splashes (v3)
-// RGB text reveal splashes between funnel screens. Auto-advance.
+// WriteUp AI — Funnel Transition Splashes (v4)
 //
-// v3 fix: Smooth transition timing
-// - Splash fade now completes fully BEFORE onComplete fires
-// - 150ms buffer after fade ensures splash is invisible before DOM removal
-// - Fade duration increased to 800ms for smoother feel
-// - pointerEvents: "none" set when fading so users can't interact
+// v4 changes:
+// - Light indicator: even pulse glow (radial-gradient) instead of sweeping wave
+// - Smooth fade timing: 800ms fade, onComplete fires 150ms after fade ends
+// - Updated sections splash subtitle
+// - overflow: visible on glow container so light bleeds above/below slit
 
 "use client";
 
 import { useState, useEffect } from "react";
 
 // ═══════════════════════════════════════════════════════════
-// Design Tokens (must match welcome-client.tsx)
+// Design Tokens
 // ═══════════════════════════════════════════════════════════
 const W = {
   accent: "#00B7DB",
@@ -88,26 +87,23 @@ export const SPLASH_CONFIG: Record<string, SplashConfig> = {
 };
 
 // ═══════════════════════════════════════════════════════════
-// CSS (injected once)
+// CSS — pulsing slit glow
 // ═══════════════════════════════════════════════════════════
 const splashCSS = `
-@keyframes splashSweep{0%{background-position:250% 0}100%{background-position:-250% 0}}
+@keyframes slitGlowOuter{0%,100%{opacity:0.15;transform:scaleY(0.65)}50%{opacity:0.65;transform:scaleY(1)}}
+@keyframes slitGlowInner{0%,100%{opacity:0.25;transform:scaleY(0.75)}50%{opacity:0.9;transform:scaleY(1)}}
+@keyframes slitCore{0%,100%{opacity:0.2}50%{opacity:0.75}}
 `;
 
 // ═══════════════════════════════════════════════════════════
 // TransitionSplash Component
 // ═══════════════════════════════════════════════════════════
 //
-// TIMING (v3 — smooth handoff):
-//
-//   t1: RGB text reveal starts      @ revealMs (250-400ms)
-//   t2: light sweep fades in        @ revealMs + 400ms
-//   t3: fade-out begins (opacity 0) @ durationMs - 800ms
-//        CSS transition runs 800ms, so fade completes @ durationMs
-//   t4: onComplete fires            @ durationMs + 150ms
-//        150ms after fade is done → splash is fully invisible
-//        → DOM removal + funnel screen mount is seamless
-//
+// TIMING (v4):
+//   t1: RGB text reveal     @ revealMs
+//   t2: glow fades in       @ revealMs + 400
+//   t3: fade-out begins     @ durationMs - 800 (800ms CSS transition)
+//   t4: onComplete          @ durationMs + 150 (after fade completes)
 
 interface TransitionSplashProps {
   splash: SplashConfig;
@@ -119,13 +115,13 @@ export default function TransitionSplash({ splash, onComplete, m }: TransitionSp
   const { headline, subtitle, durationMs, hasIcon, isConfirmation } = splash;
   const [swept, setSwept] = useState(false);
   const [fading, setFading] = useState(false);
-  const [sweepVisible, setSweepVisible] = useState(false);
+  const [glowVisible, setGlowVisible] = useState(false);
 
   const revealMs = hasIcon ? 400 : 250;
 
   useEffect(() => {
     const t1 = setTimeout(() => setSwept(true), revealMs);
-    const t2 = setTimeout(() => setSweepVisible(true), revealMs + 400);
+    const t2 = setTimeout(() => setGlowVisible(true), revealMs + 400);
     const t3 = setTimeout(() => setFading(true), durationMs - 800);
     const t4 = setTimeout(() => onComplete(), durationMs + 150);
     return () => {
@@ -175,16 +171,7 @@ export default function TransitionSplash({ splash, onComplete, m }: TransitionSp
             transition: "all 0.5s cubic-bezier(0.22, 1, 0.36, 1) 0.1s",
           }}
         >
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={W.green}
-            strokeWidth="2.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={W.green} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="20 6 9 17 4 12" />
           </svg>
         </div>
@@ -207,16 +194,7 @@ export default function TransitionSplash({ splash, onComplete, m }: TransitionSp
             transition: "all 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
           }}
         >
-          <span
-            style={{
-              fontFamily: F.body,
-              fontWeight: 700,
-              fontSize: 15,
-              color: "#fff",
-            }}
-          >
-            W
-          </span>
+          <span style={{ fontFamily: F.body, fontWeight: 700, fontSize: 15, color: "#fff" }}>W</span>
         </div>
       )}
 
@@ -280,44 +258,44 @@ export default function TransitionSplash({ splash, onComplete, m }: TransitionSp
             transition: "opacity 0.5s ease 0.8s",
           }}
         >
-          <svg
-            width="12"
-            height="12"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={W.green}
-            strokeWidth="2"
-          >
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={W.green} strokeWidth="2">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
           </svg>
-          <span
-            style={{
-              fontFamily: F.body,
-              fontSize: 11,
-              fontWeight: 600,
-              color: W.green,
-            }}
-          >
+          <span style={{ fontFamily: F.body, fontSize: 11, fontWeight: 600, color: W.green }}>
             Encrypted. Verified. Yours.
           </span>
         </div>
       )}
 
-      {/* Light sweep presence indicator */}
+      {/* Pulsing slit glow — light bleeding through a backlit seam */}
       <div
         style={{
           width: 140,
           height: 2,
           borderRadius: 100,
-          background: "rgba(232,229,224,0.6)",
+          background: "rgba(232,229,224,0.4)",
           marginTop: isConfirmation ? 16 : 28,
           position: "relative",
-          overflow: "hidden",
-          opacity: sweepVisible ? 1 : 0,
+          overflow: "visible",
+          opacity: glowVisible ? 1 : 0,
           transition: "opacity 0.4s ease",
         }}
       >
-        {/* Outer glow layer */}
+        {/* Outer ambient bloom — tighter falloff */}
+        <div
+          style={{
+            position: "absolute",
+            top: -6,
+            left: 0,
+            width: "100%",
+            height: 14,
+            borderRadius: 100,
+            background: "radial-gradient(ellipse at center, rgba(0,183,219,0.3) 0%, rgba(0,183,219,0.1) 50%, transparent 80%)",
+            filter: "blur(3px)",
+            animation: glowVisible ? "slitGlowOuter 2.8s ease-in-out infinite" : "none",
+          }}
+        />
+        {/* Focused inner glow */}
         <div
           style={{
             position: "absolute",
@@ -326,16 +304,12 @@ export default function TransitionSplash({ splash, onComplete, m }: TransitionSp
             width: "100%",
             height: 6,
             borderRadius: 100,
-            background:
-              "linear-gradient(90deg, transparent 0%, transparent 25%, rgba(0,136,163,0.45) 42%, rgba(0,153,184,0.65) 50%, rgba(0,136,163,0.45) 58%, transparent 75%, transparent 100%)",
-            backgroundSize: "280% 100%",
+            background: "radial-gradient(ellipse at center, rgba(0,183,219,0.65) 0%, rgba(0,163,196,0.3) 45%, transparent 80%)",
             filter: "blur(1.5px)",
-            animation: sweepVisible
-              ? "splashSweep 3s ease-in-out infinite"
-              : "none",
+            animation: glowVisible ? "slitGlowInner 2.8s ease-in-out infinite" : "none",
           }}
         />
-        {/* Core line */}
+        {/* Sharp core line */}
         <div
           style={{
             position: "absolute",
@@ -344,12 +318,8 @@ export default function TransitionSplash({ splash, onComplete, m }: TransitionSp
             width: "100%",
             height: 2,
             borderRadius: 100,
-            background:
-              "linear-gradient(90deg, transparent 0%, transparent 30%, rgba(0,136,163,0.55) 45%, rgba(0,153,184,0.8) 50%, rgba(0,136,163,0.55) 55%, transparent 70%, transparent 100%)",
-            backgroundSize: "280% 100%",
-            animation: sweepVisible
-              ? "splashSweep 3s ease-in-out infinite"
-              : "none",
+            background: "rgba(0,183,219,0.35)",
+            animation: glowVisible ? "slitCore 2.8s ease-in-out infinite" : "none",
           }}
         />
       </div>

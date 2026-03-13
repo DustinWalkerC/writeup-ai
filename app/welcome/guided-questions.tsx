@@ -293,7 +293,9 @@ export default function GuidedQuestions({ onNext, onBack, m, t, answers: initial
         <style>{guidedQuestionsCSS}{`
           @keyframes arcShrink{from{stroke-dashoffset:0}to{stroke-dashoffset:126}}
           @keyframes ringExpand{0%{transform:scale(0.6);opacity:0}50%{transform:scale(1.1);opacity:0.4}100%{transform:scale(1.4);opacity:0}}
-          @keyframes completionSweep{0%{background-position:250% 0}100%{background-position:-250% 0}}
+          @keyframes slitGlowOuter{0%,100%{opacity:0.15;transform:scaleY(0.65)}50%{opacity:0.65;transform:scaleY(1)}}
+          @keyframes slitGlowInner{0%,100%{opacity:0.25;transform:scaleY(0.75)}50%{opacity:0.9;transform:scaleY(1)}}
+          @keyframes slitCore{0%,100%{opacity:0.2}50%{opacity:0.75}}
           @keyframes statSlideIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
         `}</style>
 
@@ -327,10 +329,11 @@ export default function GuidedQuestions({ onNext, onBack, m, t, answers: initial
           Preparing your data for report generation and our proprietary three-layer verification.
         </p>
 
-        {/* Light sweep presence indicator */}
-        <div style={{ width: 140, height: 2, borderRadius: 100, background: "rgba(232,229,224,0.6)", marginTop: 24, position: "relative", overflow: "hidden", opacity: 1, animation: "statSlideIn 0.4s ease 0.8s both" }}>
-          <div style={{ position: "absolute", top: -2, left: 0, width: "100%", height: 6, borderRadius: 100, background: "linear-gradient(90deg, transparent 0%, transparent 25%, rgba(0,136,163,0.45) 42%, rgba(0,153,184,0.65) 50%, rgba(0,136,163,0.45) 58%, transparent 75%, transparent 100%)", backgroundSize: "280% 100%", filter: "blur(1.5px)", animation: "completionSweep 3s ease-in-out infinite" }} />
-          <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: 2, borderRadius: 100, background: "linear-gradient(90deg, transparent 0%, transparent 30%, rgba(0,136,163,0.55) 45%, rgba(0,153,184,0.8) 50%, rgba(0,136,163,0.55) 55%, transparent 70%, transparent 100%)", backgroundSize: "280% 100%", animation: "completionSweep 3s ease-in-out infinite" }} />
+        {/* Pulsing slit glow — light bleeding through a backlit seam */}
+        <div style={{ width: 140, height: 2, borderRadius: 100, background: "rgba(232,229,224,0.4)", marginTop: 24, position: "relative", overflow: "visible", opacity: 1, animation: "statSlideIn 0.4s ease 0.8s both" }}>
+          <div style={{ position: "absolute", top: -6, left: 0, width: "100%", height: 14, borderRadius: 100, background: "radial-gradient(ellipse at center, rgba(0,183,219,0.3) 0%, rgba(0,183,219,0.1) 50%, transparent 80%)", filter: "blur(3px)", animation: "slitGlowOuter 2.8s ease-in-out infinite" }} />
+          <div style={{ position: "absolute", top: -2, left: 0, width: "100%", height: 6, borderRadius: 100, background: "radial-gradient(ellipse at center, rgba(0,183,219,0.65) 0%, rgba(0,163,196,0.3) 45%, transparent 80%)", filter: "blur(1.5px)", animation: "slitGlowInner 2.8s ease-in-out infinite" }} />
+          <div style={{ position: "absolute", top: 0, left: 0, width: "100%", height: 2, borderRadius: 100, background: "rgba(0,183,219,0.35)", animation: "slitCore 2.8s ease-in-out infinite" }} />
         </div>
       </div>
     );
